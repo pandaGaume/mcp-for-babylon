@@ -38,6 +38,24 @@ type ResponseSink =
     | { type: "sse";  sessionId: string }
     | { type: "http"; res: ServerResponse };
 
+/**
+ * All mutable state for one named provider slot.
+ * Created lazily on first client connection; the WebSocket field is set when
+ * the Babylon.js provider actually connects (and cleared on disconnect).
+ */
+interface ProviderState {
+    /** The active provider WebSocket, or `null` when the provider is not connected. */
+    ws: WebSocket | null;
+    /** Pending JSON-RPC request ids → response sinks waiting for a reply. */
+    readonly pending: Map<string | number, ResponseSink>;
+    /** Active legacy SSE sessions (Claude), keyed by session id. */
+    readonly sseSessions: Map<string, ServerResponse>;
+    /** Active Streamable HTTP GET streams (MCP Inspector), keyed by session id. */
+    readonly mcpGetSessions: Map<string, ServerResponse>;
+    /** Raw WebSocket MCP clients connected to this provider. */
+    readonly wsClients: Set<WebSocket>;
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -70,7 +88,8 @@ export interface WsTunnelOptions {
     host?: string;
 
     /**
-     * URL path the Babylon.js `McpServer` (provider) connects to via WebSocket.
+     * URL path **prefix** the Babylon.js `McpServer` (provider) connects to via WebSocket.
+     * Each provider appends its name: `<providerPath>/<encodedName>`.
      * @default "/provider"
      */
     providerPath?: string;
@@ -82,23 +101,23 @@ export interface WsTunnelOptions {
     clientPath?: string;
 
     /**
-     * URL path Claude (or any SSE MCP client) hits for the SSE stream.
-     * Claude sends `GET <ssePath>` to open a long-lived event stream.
+     * **Suffix** appended to a provider name for the SSE endpoint.
+     * Full URL: `/<providerName>/sse`
      * @default "/sse"
      */
     ssePath?: string;
 
     /**
-     * URL path Claude POSTs JSON-RPC requests to.
-     * The session id is passed as a query param: `POST <messagesPath>?sessionId=…`
+     * **Suffix** appended to a provider name for the legacy SSE POST endpoint.
+     * Full URL: `/<providerName>/messages`
      * @default "/messages"
      */
     messagesPath?: string;
 
     /**
-     * URL path for the **Streamable HTTP transport** (MCP 2025-03-26).
-     * MCP Inspector and other 2025+ clients POST JSON-RPC here and receive a
-     * synchronous `application/json` response on the same connection.
+     * **Suffix** appended to a provider name for the Streamable HTTP endpoint (MCP 2025-03-26).
+     * Full URL: `/<providerName>/mcp`
+     * MCP Inspector connects here.
      * @default "/mcp"
      */
     mcpPath?: string;
@@ -106,7 +125,6 @@ export interface WsTunnelOptions {
     /**
      * URL path that returns a `{ files: string[] }` JSON listing of every file
      * inside the `samples/` subdirectory of the root static mount.
-     * Used by `index.html` to build the samples gallery.
      * @default "/__samples_index__"
      */
     samplesIndexPath?: string;
@@ -123,60 +141,37 @@ export interface WsTunnelOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * A relay that bridges a Babylon.js `McpServer` (the **provider**) with
- * one or more MCP clients — both raw WebSocket and HTTP/SSE (Claude).
+ * A multi-provider relay that bridges any number of Babylon.js `McpServer`
+ * instances (the **providers**) with their respective MCP clients.
  *
  * ## Transport overview
  * ```
- * MCP Insp.   POST /mcp            → JSON-RPC    (Streamable HTTP, 2025-03-26)
- * Claude      GET  /sse            ← SSE stream  (server → Claude, legacy)
- *             POST /messages       → JSON-RPC    (Claude → server, legacy)
- *                                        ↕  WebSocket
- * Babylon.js  ws://host/provider   ← provider registration
+ * Provider "babylon-scene"
+ *   ws://host/provider/babylon-scene    ← WebSocket registration
+ *
+ * MCP Inspector (Streamable HTTP, 2025-03-26)
+ *   GET  http://host/babylon-scene/mcp  ← persistent SSE notification stream
+ *   POST http://host/babylon-scene/mcp  → JSON-RPC requests
+ *
+ * Claude (legacy SSE transport)
+ *   GET  http://host/babylon-scene/sse      ← SSE notification stream
+ *   POST http://host/babylon-scene/messages → JSON-RPC requests
  * ```
  *
- * ## MCP Inspector
- * Point it at `http://localhost:3000/mcp` (Streamable HTTP transport).
- *
- * ## Claude Code configuration
- * Add to `~/.claude/settings.json`:
- * ```json
- * {
- *   "mcpServers": {
- *     "babylon": { "url": "http://localhost:3000/sse" }
- *   }
- * }
- * ```
+ * Each provider gets its own isolated set of sessions, pending requests, and
+ * notification streams. Multiple providers can be connected simultaneously.
  */
 export class WsTunnel {
     private readonly _options: WsTunnelOptions;
     private _httpServer: http.Server | null = null;
     private _wss: WebSocketServer | null = null;
 
-    /** The single connected Babylon.js provider. */
-    private _provider: WebSocket | null = null;
-
-    /** Raw WebSocket MCP clients. */
-    private readonly _clients = new Set<WebSocket>();
-
     /**
-     * Active SSE sessions keyed by session id.
-     * Each entry is the long-lived HTTP response object for that Claude session.
+     * Per-provider state, keyed by provider name.
+     * Created lazily: a slot is allocated the first time any client references
+     * a provider name, even before the Babylon.js WebSocket connects.
      */
-    private readonly _sseSessions = new Map<string, ServerResponse>();
-
-    /**
-     * Active `GET /mcp` SSE streams keyed by session id.
-     * Opened by Streamable HTTP clients (e.g. MCP Inspector) to receive
-     * server-initiated notifications as required by MCP 2025-03-26.
-     */
-    private readonly _mcpGetSessions = new Map<string, ServerResponse>();
-
-    /**
-     * Tracks which sink (WS socket or SSE session) is waiting for a given
-     * JSON-RPC response id, so the reply can be routed back correctly.
-     */
-    private readonly _pending = new Map<string | number, ResponseSink>();
+    private readonly _providers = new Map<string, ProviderState>();
 
     constructor(options: WsTunnelOptions) {
         this._options = options;
@@ -187,8 +182,25 @@ export class WsTunnel {
     // -------------------------------------------------------------------------
 
     get isListening(): boolean { return this._httpServer?.listening ?? false; }
-    get clientCount(): number  { return this._clients.size + this._sseSessions.size; }
-    get hasProvider(): boolean { return this._provider?.readyState === WebSocket.OPEN; }
+
+    /** Total number of connected MCP clients across all providers. */
+    get clientCount(): number {
+        let n = 0;
+        for (const s of this._providers.values()) {
+            n += s.wsClients.size + s.sseSessions.size + s.mcpGetSessions.size;
+        }
+        return n;
+    }
+
+    /** Names of all providers that currently have an active WebSocket connection. */
+    get providerNames(): readonly string[] {
+        return [...this._providers.entries()]
+            .filter(([, s]) => s.ws?.readyState === WebSocket.OPEN)
+            .map(([name]) => name);
+    }
+
+    /** @deprecated Check `providerNames.length > 0` instead. */
+    get hasProvider(): boolean { return this.providerNames.length > 0; }
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -203,12 +215,19 @@ export class WsTunnel {
             this._wss = new WebSocketServer({ server: this._httpServer });
 
             this._wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-                const url = req.url ?? "/";
+                const url          = req.url ?? "/";
                 const providerPath = this._options.providerPath ?? "/provider";
-                if (url.startsWith(providerPath)) {
-                    this._onProviderConnect(ws);
+
+                if (url.startsWith(providerPath + "/") || url === providerPath) {
+                    // Extract name: everything after "<providerPath>/"
+                    const raw  = url.slice(providerPath.length).replace(/^\//, "");
+                    const name = decodeURIComponent(raw.split("?")[0]) || "(unnamed)";
+                    this._onProviderConnect(ws, name);
                 } else {
-                    this._onClientConnect(ws);
+                    // Raw WS MCP client: URL is "/<providerName>" or "/"
+                    const raw  = url.replace(/^\//, "").split("?")[0];
+                    const name = decodeURIComponent(raw) || "";
+                    this._onClientConnect(ws, name);
                 }
             });
 
@@ -221,16 +240,16 @@ export class WsTunnel {
      */
     stop(): Promise<void> {
         return new Promise((resolve, reject) => {
-            // Close SSE sessions
-            for (const res of this._sseSessions.values()) res.end();
-            this._sseSessions.clear();
-
-            // Close Streamable HTTP GET streams
-            for (const res of this._mcpGetSessions.values()) res.end();
-            this._mcpGetSessions.clear();
-
-            for (const client of this._clients) client.close();
-            this._provider?.close();
+            for (const state of this._providers.values()) {
+                for (const res of state.sseSessions.values()) res.end();
+                state.sseSessions.clear();
+                for (const res of state.mcpGetSessions.values()) res.end();
+                state.mcpGetSessions.clear();
+                for (const client of state.wsClients) client.close();
+                state.wsClients.clear();
+                state.ws?.close();
+            }
+            this._providers.clear();
             this._wss?.close();
             this._httpServer?.close((err) => (err ? reject(err) : resolve()));
         });
@@ -244,9 +263,7 @@ export class WsTunnel {
         const method = req.method ?? "GET";
         const rawUrl = (req.url ?? "/").split("?")[0];
 
-        // CORS — allow the dev page (same origin) and MCP clients (different origin).
-        // Reflect the requested headers back so Streamable HTTP clients that include
-        // Mcp-Session-Id, Accept, or other custom headers are not blocked by preflight.
+        // CORS
         res.setHeader("Access-Control-Allow-Origin",  "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers",
@@ -255,19 +272,36 @@ export class WsTunnel {
 
         if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
-        const ssePath          = this._options.ssePath           ?? "/sse";
-        const messagesPath     = this._options.messagesPath      ?? "/messages";
-        const mcpPath          = this._options.mcpPath           ?? "/mcp";
-        const samplesIndexPath = this._options.samplesIndexPath  ?? "/__samples_index__";
+        // Samples index (no provider prefix)
+        const samplesIndexPath = this._options.samplesIndexPath ?? "/__samples_index__";
+        if (method === "GET" && rawUrl === samplesIndexPath) {
+            this._handleSamplesIndex(res);
+            return;
+        }
 
-        if (method === "GET"  && rawUrl === ssePath)           { this._handleSseConnect(req, res);    return; }
-        if (method === "POST" && rawUrl === ssePath)           { this._handleMcpPost(req, res);       return; }
-        if (method === "POST" && rawUrl === messagesPath)      { this._handleSseMessage(req, res);    return; }
-        if (method === "GET"  && rawUrl === mcpPath)           { this._handleMcpGetStream(req, res);  return; }
-        if (method === "POST" && rawUrl === mcpPath)           { this._handleMcpPost(req, res);       return; }
-        if (method === "GET"  && rawUrl === samplesIndexPath)  { this._handleSamplesIndex(res);       return; }
+        // Route /<providerName>/<endpoint>
+        const route = this._parseProviderRoute(rawUrl);
+        if (route) {
+            const { providerName, endpoint } = route;
+            const mcpSuffix      = (this._options.mcpPath      ?? "/mcp")      .replace(/^\//, "");
+            const sseSuffix      = (this._options.ssePath       ?? "/sse")      .replace(/^\//, "");
+            const messagesSuffix = (this._options.messagesPath  ?? "/messages") .replace(/^\//, "");
 
-        // Fall through to static file serving
+            if (endpoint === mcpSuffix) {
+                if (method === "GET")  { this._handleMcpGetStream(req, res, providerName); return; }
+                if (method === "POST") { this._handleMcpPost(req, res, providerName);      return; }
+            }
+            if (endpoint === sseSuffix && method === "GET") {
+                this._handleSseConnect(req, res, providerName);
+                return;
+            }
+            if (endpoint === messagesSuffix && method === "POST") {
+                this._handleSseMessage(req, res, providerName);
+                return;
+            }
+        }
+
+        // Static files
         if (this._options.staticMounts?.length) {
             this._serveStatic(req, res);
         } else {
@@ -275,50 +309,61 @@ export class WsTunnel {
         }
     }
 
+    /**
+     * Parses `/<providerName>/<endpoint>` from a URL path.
+     * Returns `null` if the URL does not match this two-segment pattern.
+     */
+    private _parseProviderRoute(rawUrl: string): { providerName: string; endpoint: string } | null {
+        const parts = rawUrl.split("/").filter(Boolean);
+        if (parts.length !== 2) return null;
+        const providerName = decodeURIComponent(parts[0]);
+        const endpoint     = decodeURIComponent(parts[1]);
+        if (!providerName || !endpoint) return null;
+        return { providerName, endpoint };
+    }
+
     // -------------------------------------------------------------------------
-    // MCP / SSE transport
+    // MCP / SSE transport (per provider)
     // -------------------------------------------------------------------------
 
     /**
-     * Handles `GET /sse` — opens a long-lived SSE stream for one Claude session.
+     * Handles `GET /<providerName>/sse` — opens a long-lived SSE stream for Claude.
      * Sends an `endpoint` event so Claude knows where to POST its requests.
      */
-    private _handleSseConnect(req: IncomingMessage, res: ServerResponse): void {
+    private _handleSseConnect(req: IncomingMessage, res: ServerResponse, providerName: string): void {
         const sessionId    = randomUUID();
-        const messagesPath = this._options.messagesPath ?? "/messages";
+        const messagesSuffix = (this._options.messagesPath ?? "/messages").replace(/^\//, "");
+        const messagesUrl    = `/${encodeURIComponent(providerName)}/${messagesSuffix}`;
 
         res.writeHead(200, {
             "Content-Type":  "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection":    "keep-alive",
         });
+        res.write(`event: endpoint\ndata: ${messagesUrl}?sessionId=${sessionId}\n\n`);
 
-        // MCP SSE spec: first event tells the client its POST endpoint.
-        res.write(`event: endpoint\ndata: ${messagesPath}?sessionId=${sessionId}\n\n`);
-
-        this._sseSessions.set(sessionId, res);
+        const state = this._getOrCreateProviderState(providerName);
+        state.sseSessions.set(sessionId, res);
 
         req.on("close", () => {
-            this._sseSessions.delete(sessionId);
-            // Clean up any pending requests for this session.
-            for (const [id, sink] of this._pending) {
-                if (sink.type === "sse" && sink.sessionId === sessionId) {
-                    this._pending.delete(id);
-                }
+            state.sseSessions.delete(sessionId);
+            for (const [id, sink] of state.pending) {
+                if (sink.type === "sse" && sink.sessionId === sessionId) state.pending.delete(id);
             }
         });
     }
 
     /**
-     * Handles `POST /messages?sessionId=…` — receives a JSON-RPC request from
-     * Claude and forwards it to the Babylon.js provider.
-     * Always responds 202 Accepted immediately; the real response arrives over SSE.
+     * Handles `POST /<providerName>/messages?sessionId=…` — receives a JSON-RPC
+     * request from Claude and forwards it to the provider.
+     * Always responds 202 Accepted; the real response arrives over SSE.
      */
-    private _handleSseMessage(req: IncomingMessage, res: ServerResponse): void {
+    private _handleSseMessage(req: IncomingMessage, res: ServerResponse, providerName: string): void {
         const params    = new URL(req.url ?? "", "http://localhost").searchParams;
         const sessionId = params.get("sessionId") ?? "";
+        const state     = this._getOrCreateProviderState(providerName);
 
-        if (!this._sseSessions.has(sessionId)) {
+        if (!state.sseSessions.has(sessionId)) {
             res.writeHead(400, { "Content-Type": "text/plain" });
             res.end("Unknown or expired session");
             return;
@@ -327,40 +372,35 @@ export class WsTunnel {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end",  () => {
-            // Register the sink before forwarding so the response can be routed back.
             try {
                 const msg = JSON.parse(body) as { id?: string | number };
-                if (msg.id != null) {
-                    this._pending.set(msg.id, { type: "sse", sessionId });
-                }
-            } catch { /* malformed — forward anyway, provider returns parse error */ }
+                if (msg.id != null) state.pending.set(msg.id, { type: "sse", sessionId });
+            } catch { /* malformed — forward anyway */ }
 
-            if (this._provider?.readyState === WebSocket.OPEN) {
-                this._provider.send(body);
+            if (state.ws?.readyState === WebSocket.OPEN) {
+                state.ws.send(body);
             } else {
-                // No provider: send error via SSE immediately.
-                const sseRes = this._sseSessions.get(sessionId);
+                const sseRes = state.sseSessions.get(sessionId);
                 if (sseRes) {
                     let errId: string | number | null = null;
                     try { errId = (JSON.parse(body) as { id?: string | number }).id ?? null; } catch { /* */ }
                     this._sendSseEvent(sseRes, JSON.stringify({
                         jsonrpc: "2.0", id: errId,
-                        error: { code: -32000, message: "No provider connected" },
+                        error: { code: -32000, message: `Provider "${providerName}" not connected` },
                     }));
                 }
             }
 
-            // Always 202 — response will arrive asynchronously over the SSE stream.
             res.writeHead(202); res.end();
         });
     }
 
     /**
-     * Handles `POST /mcp` — Streamable HTTP transport (MCP 2025-03-26).
+     * Handles `POST /<providerName>/mcp` — Streamable HTTP transport (MCP 2025-03-26).
      * Forwards the JSON-RPC request to the provider and holds the HTTP response
      * open until the reply arrives, then writes it as `application/json`.
      */
-    private _handleMcpPost(req: IncomingMessage, res: ServerResponse): void {
+    private _handleMcpPost(req: IncomingMessage, res: ServerResponse, providerName: string): void {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
@@ -372,36 +412,36 @@ export class WsTunnel {
                 return;
             }
 
-            if (!this._provider || this._provider.readyState !== WebSocket.OPEN) {
+            const state = this._getOrCreateProviderState(providerName);
+
+            if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
                 res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                 res.end(JSON.stringify({
                     jsonrpc: "2.0", id: msg.id ?? null,
-                    error: { code: -32000, message: "No provider connected" },
+                    error: { code: -32000, message: `Provider "${providerName}" not connected` },
                 }));
                 return;
             }
 
             if (msg.id != null) {
                 // Request: hold the response open; reply arrives in _routeFromProvider.
-                this._pending.set(msg.id, { type: "http", res });
+                state.pending.set(msg.id, { type: "http", res });
             } else {
                 // Notification: forward and acknowledge immediately.
                 res.writeHead(202);
                 res.end();
             }
 
-            this._provider.send(body);
+            state.ws.send(body);
         });
     }
 
     /**
-     * Handles `GET /mcp` — opens a persistent SSE stream per MCP 2025-03-26.
+     * Handles `GET /<providerName>/mcp` — opens a persistent SSE stream per MCP 2025-03-26.
      * Streamable HTTP clients (e.g. MCP Inspector) use this to receive
-     * server-initiated notifications and requests without re-polling.
-     * The session id is taken from the `Mcp-Session-Id` request header when
-     * present, so the stream is associated with the correct client session.
+     * server-initiated notifications without re-polling.
      */
-    private _handleMcpGetStream(req: IncomingMessage, res: ServerResponse): void {
+    private _handleMcpGetStream(req: IncomingMessage, res: ServerResponse, providerName: string): void {
         const sessionId = (req.headers["mcp-session-id"] as string | undefined) ?? randomUUID();
 
         res.writeHead(200, {
@@ -410,19 +450,18 @@ export class WsTunnel {
             "Connection":    "keep-alive",
             "Mcp-Session-Id": sessionId,
         });
-        // Send an empty comment to flush headers immediately.
         res.write(": stream open\n\n");
 
-        this._mcpGetSessions.set(sessionId, res);
+        const state = this._getOrCreateProviderState(providerName);
+        state.mcpGetSessions.set(sessionId, res);
 
         req.on("close", () => {
-            this._mcpGetSessions.delete(sessionId);
+            state.mcpGetSessions.delete(sessionId);
         });
     }
 
     /** Writes one JSON-RPC message as an SSE `message` event. */
     private _sendSseEvent(res: ServerResponse, data: string): void {
-        // SSE data fields must be single-line; compact the JSON just in case.
         let line: string;
         try { line = JSON.stringify(JSON.parse(data)); } catch { line = data; }
         res.write(`event: message\ndata: ${line}\n\n`);
@@ -432,47 +471,50 @@ export class WsTunnel {
     // WebSocket connection handlers
     // -------------------------------------------------------------------------
 
-    private _onProviderConnect(ws: WebSocket): void {
-        if (this._provider) {
-            ws.close(1008, "A provider is already connected");
+    private _onProviderConnect(ws: WebSocket, name: string): void {
+        const existing = this._providers.get(name);
+        if (existing?.ws?.readyState === WebSocket.OPEN) {
+            ws.close(1008, `Provider "${name}" is already connected`);
             return;
         }
 
-        this._provider = ws;
+        const state = this._getOrCreateProviderState(name);
+        state.ws = ws;
 
-        ws.on("message", (data: Buffer) => this._routeFromProvider(data.toString()));
+        ws.on("message", (data: Buffer) => this._routeFromProvider(state, data.toString()));
 
         ws.on("close", () => {
-            this._provider = null;
+            state.ws = null;
             // Notify all pending sinks that the provider is gone.
             const error = JSON.stringify({
                 jsonrpc: "2.0", id: null,
-                error: { code: -32000, message: "Provider disconnected" },
+                error: { code: -32000, message: `Provider "${name}" disconnected` },
             });
-            for (const [, sink] of this._pending) {
-                if (sink.type === "ws") {
-                    if (sink.socket.readyState === WebSocket.OPEN) sink.socket.send(error);
+            for (const sink of state.pending.values()) {
+                if (sink.type === "ws" && sink.socket.readyState === WebSocket.OPEN) {
+                    sink.socket.send(error);
                 } else if (sink.type === "sse") {
-                    const sseRes = this._sseSessions.get(sink.sessionId);
+                    const sseRes = state.sseSessions.get(sink.sessionId);
                     if (sseRes) this._sendSseEvent(sseRes, error);
-                } else {
+                } else if (sink.type === "http") {
                     sink.res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                     sink.res.end(error);
                 }
             }
-            this._pending.clear();
+            state.pending.clear();
         });
     }
 
-    private _onClientConnect(ws: WebSocket): void {
-        this._clients.add(ws);
+    private _onClientConnect(ws: WebSocket, providerName: string): void {
+        const state = this._getOrCreateProviderState(providerName);
+        state.wsClients.add(ws);
 
-        ws.on("message", (data: Buffer) => this._routeFromClient(ws, data.toString()));
+        ws.on("message", (data: Buffer) => this._routeFromClient(ws, state, data.toString()));
 
         ws.on("close", () => {
-            this._clients.delete(ws);
-            for (const [id, sink] of this._pending) {
-                if (sink.type === "ws" && sink.socket === ws) this._pending.delete(id);
+            state.wsClients.delete(ws);
+            for (const [id, sink] of state.pending) {
+                if (sink.type === "ws" && sink.socket === ws) state.pending.delete(id);
             }
         });
     }
@@ -481,16 +523,14 @@ export class WsTunnel {
     // Message routing
     // -------------------------------------------------------------------------
 
-    private _routeFromClient(client: WebSocket, data: string): void {
+    private _routeFromClient(client: WebSocket, state: ProviderState, data: string): void {
         try {
             const msg = JSON.parse(data) as { id?: string | number };
-            if (msg?.id != null) {
-                this._pending.set(msg.id, { type: "ws", socket: client });
-            }
+            if (msg?.id != null) state.pending.set(msg.id, { type: "ws", socket: client });
         } catch { /* forward as-is */ }
 
-        if (this._provider?.readyState === WebSocket.OPEN) {
-            this._provider.send(data);
+        if (state.ws?.readyState === WebSocket.OPEN) {
+            state.ws.send(data);
         } else {
             client.send(JSON.stringify({
                 jsonrpc: "2.0", id: null,
@@ -499,56 +539,69 @@ export class WsTunnel {
         }
     }
 
-    private _routeFromProvider(data: string): void {
+    private _routeFromProvider(state: ProviderState, data: string): void {
         try {
             const msg = JSON.parse(data) as { id?: string | number };
 
             if (msg.id != null) {
                 // Response: route to the specific sink that made the request.
-                const sink = this._pending.get(msg.id);
+                const sink = state.pending.get(msg.id);
                 if (sink?.type === "ws" && sink.socket.readyState === WebSocket.OPEN) {
                     sink.socket.send(data);
                 } else if (sink?.type === "sse") {
-                    const sseRes = this._sseSessions.get(sink.sessionId);
+                    const sseRes = state.sseSessions.get(sink.sessionId);
                     if (sseRes) this._sendSseEvent(sseRes, data);
                 } else if (sink?.type === "http") {
                     sink.res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                     sink.res.end(data);
                 }
-                this._pending.delete(msg.id);
+                state.pending.delete(msg.id);
             } else {
-                // Notification (no id): broadcast to all clients.
-                this._broadcast(data);
+                // Notification (no id): broadcast to all clients of this provider.
+                this._broadcast(state, data);
             }
         } catch {
-            this._broadcast(data);
+            this._broadcast(state, data);
         }
     }
 
-    /** Sends a message to all connected clients — WebSocket, SSE, and Streamable HTTP GET streams. */
-    private _broadcast(data: string): void {
-        for (const client of this._clients) {
+    /** Sends a message to all clients connected to one provider. */
+    private _broadcast(state: ProviderState, data: string): void {
+        for (const client of state.wsClients) {
             if (client.readyState === WebSocket.OPEN) client.send(data);
         }
-        for (const sseRes of this._sseSessions.values()) {
+        for (const sseRes of state.sseSessions.values()) {
             this._sendSseEvent(sseRes, data);
         }
-        for (const mcpRes of this._mcpGetSessions.values()) {
+        for (const mcpRes of state.mcpGetSessions.values()) {
             this._sendSseEvent(mcpRes, data);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Provider state helpers
+    // -------------------------------------------------------------------------
+
+    /** Returns the state for `name`, creating it lazily if it doesn't exist yet. */
+    private _getOrCreateProviderState(name: string): ProviderState {
+        let state = this._providers.get(name);
+        if (!state) {
+            state = {
+                ws: null,
+                pending: new Map(),
+                sseSessions: new Map(),
+                mcpGetSessions: new Map(),
+                wsClients: new Set(),
+            };
+            this._providers.set(name, state);
+        }
+        return state;
     }
 
     // -------------------------------------------------------------------------
     // Samples index
     // -------------------------------------------------------------------------
 
-    /**
-     * Handles `GET /__samples_index__` — returns `{ files: string[] }` listing
-     * every file inside the `samples/` subdirectory of the root static mount.
-     *
-     * `index.html` fetches this endpoint to populate the samples gallery without
-     * requiring directory-listing support in the static file server.
-     */
     private _handleSamplesIndex(res: ServerResponse): void {
         const rootMount = (this._options.staticMounts ?? []).find((m) => m.urlPrefix === "/");
 
@@ -576,7 +629,6 @@ export class WsTunnel {
         const rawUrl = (req.url ?? "/").split("?")[0].split("#")[0];
         const mounts = this._options.staticMounts ?? [];
 
-        // Longest-prefix match wins.
         const mount = [...mounts]
             .filter((m) => {
                 const prefix = m.urlPrefix.endsWith("/") ? m.urlPrefix : m.urlPrefix + "/";
