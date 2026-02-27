@@ -1,0 +1,23 @@
+{
+    "name": "@dev/tunnel",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "npm run clean && npm run compile",
+        "clean": "rimraf dist && rimraf tsconfig.build.tsbuildinfo",
+        "compile": "tsc -b tsconfig.build.json",
+        "watch": "tsc -b tsconfig.build.json -w",
+        "start": "node dist/bin.js"
+    },
+    "dependencies": {
+        "open": "^11.0.0",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/ws": "^8.5.0"
+    }
+}

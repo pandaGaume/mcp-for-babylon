@@ -1,17 +1,12 @@
 {
-  "name": "my-project",
+  "name": "@mcpbabylon/root",
   "version": "0.1.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "prepare": "husky"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pandaGaume/mcp-for-babylon.git"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",
@@ -19,15 +14,36 @@
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.0",
-    "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.2.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "rimraf": "~6.0.1"
   },
   "lint-staged": {
     "*.ts": [
       "eslint --fix",
       "prettier --write"
     ]
+  },
+  "workspaces": [
+    "packages/**/*"
+  ],
+  "scripts": {
+    "build:dev": "tsc",
+    "build:watch": "tsc --watch",
+    "lint": "npm run lint:check",
+    "lint:check": "eslint \"packages/**/src/**/*.{ts,tsx,js,json}\" --quiet",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "npm run format:check && npm run format:fix",
+    "format:check": "prettier --check \"packages/**/src/**/*.{ts,tsx,js,json,scss,css}\"",
+    "bundle": "npm run bundle --workspace=@dev/core",
+    "bundle:dev": "npm run bundle:dev --workspace=@dev/core",
+    "bundle:watch": "npm run bundle:watch --workspace=@dev/core",
+    "server:build": "npm run build --workspace=@dev/tunnel",
+    "server:start": "npm run server:build && npm run start --workspace=@dev/tunnel"
+  },
+  "engines": {
+    "node": ">=20.11.0 <23.0.0",
+    "npm": ">=8.0.0"
   }
 }
