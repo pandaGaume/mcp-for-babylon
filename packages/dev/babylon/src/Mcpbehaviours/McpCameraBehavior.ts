@@ -35,7 +35,7 @@ export class McpCameraBehavior extends McpBehavior {
     })
     public async setTarget(args: { uri: string; target: { x: number; y: number; z: number } }): Promise<McpToolResult> {
         // decorated methods delegate to the adapter — BJS mutation lives there
-        return this.adapter.executeToolAsync("camera.setTarget", args.uri, { target: args.target });
+        return this.adapter.executeToolAsync(args.uri, "camera.setTarget", { target: args.target });
     }
 
     protected override _buildResources(): McpResource[] {
