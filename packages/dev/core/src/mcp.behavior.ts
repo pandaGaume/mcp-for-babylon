@@ -73,7 +73,7 @@ export abstract class McpBehavior extends McpBehaviorBase {
     }
 
     public override async executeToolAsync(uri: string, toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
-        return this._adapter.executeToolAsync(toolName, uri, args);
+        return this._adapter.executeToolAsync(uri, toolName, args);
     }
 
     protected _buildResources(): McpResource[] {

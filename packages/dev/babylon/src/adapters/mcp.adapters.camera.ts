@@ -17,6 +17,7 @@ export class McpCameraAdapter extends McpAdapterBase {
         }
         this._observers.push(this._scene.onNewCameraAddedObservable.add(this._onCameraAdded.bind(this)));
         this._observers.push(this._scene.onCameraRemovedObservable.add(this._onCameraRemoved.bind(this)));
+        this._initializeCameraIndex();
     }
 
     public async readResourceAsync(uri: string): Promise<McpResourceContent | undefined> {

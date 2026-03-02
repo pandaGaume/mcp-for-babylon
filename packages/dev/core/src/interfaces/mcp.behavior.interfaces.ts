@@ -79,22 +79,6 @@ export interface IMcpBehaviorAdapter extends IMcpRuntimeOperations {
 }
 
 /**
- * Adapter between an {@link IMcpBehavior} and its underlying data source.
- *
- * The adapter is the only layer that has direct knowledge of BJS objects
- * (or any other data source — repository, remote API, etc.).
- * It resolves URIs to concrete objects and performs reads and mutations on them.
- *
- * An adapter may back a single object or an entire collection:
- * - `BabylonSingleLightAdapter`  — wraps one `BABYLON.Light`
- * - `BabylonSceneLightsAdapter`  — wraps `scene.lights[]`
- *
- * The behavior never touches the data source directly — it always delegates
- * through its adapter, keeping MCP protocol logic fully decoupled from BJS.
- */
-export interface IMcpBehaviorAdapter extends IMcpRuntimeOperations {}
-
-/**
  * Defines the MCP identity, schema, and protocol shape for a category of objects.
  *
  * A behavior is the MCP-facing description of "what something is and what you can do with it".
