@@ -54,7 +54,11 @@
         <!-- Babylon.js core (CDN) -->
         <script src="https://cdn.babylonjs.com/babylon.js"></script>
 
-        <!-- MCP server bundle -->
+        <!-- MCP bundles — load order matters:
+             1. mcp-core.js   → window.McpCore   (shared interfaces, required by mcp-babylon)
+             2. mcp-server.js → window.McpServer  (McpServerBuilder and protocol impl)
+             3. mcp-babylon.js→ window.McpBabylon (adapters/behaviors — add when needed) -->
+        <script src="/bundle/mcp-core.js"></script>
         <script src="/bundle/mcp-server.js"></script>
 
         <script>

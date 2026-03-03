@@ -16,7 +16,7 @@ export class McpCameraBehavior extends McpBehavior {
         return [
             {
                 name: McpCameraBehavior.CameraSetTargetFn,
-                description: "Sets the camera look-at point (world space) by calling TargetCamera.setTarget(Vector3).",
+                description: "Sets the camera look-at point (world space) by calling TargetCamera.setTarget(Vector3). coordinates are World-space, right-handed system, y-axis up",
                 inputSchema: {
                     type: "object",
                     properties: {

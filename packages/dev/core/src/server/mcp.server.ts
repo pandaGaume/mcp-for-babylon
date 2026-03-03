@@ -172,14 +172,7 @@ export class McpServer implements IMcpServer, IMcpServerHandlers {
     resourcesTemplatesList(req: JsonRpcRequest): JsonRpcResponse {
         const templates: McpResourceTemplate[] = [];
         for (const behavior of this._behaviors.values()) {
-            if (behavior.uriTemplate) {
-                templates.push({
-                    uriTemplate: behavior.uriTemplate,
-                    name: behavior.name ?? behavior.namespace,
-                    description: behavior.description,
-                    mimeType: behavior.mimeType,
-                });
-            }
+            templates.push(...behavior.getResourceTemplates());
         }
         return Mcp.resourcesTemplatesListResult(req.id, templates);
     }
@@ -195,15 +188,20 @@ export class McpServer implements IMcpServer, IMcpServerHandlers {
 
     /**
      * Handles `resources/read`.
-     * Looks up the instance by URI and returns its current state.
-     * Returns a `-32002` error if the URI is not found.
+     *
+     * Resolution order:
+     * 1. Exact match in `_resourceIndex` (static resource URIs, O(1)).
+     * 2. Template match: scan each behavior's URI templates and test the
+     *    requested URI against each `{variable}` pattern (RFC 6570 subset).
+     *
+     * Returns a `-32002` error if neither lookup finds a handler.
      */
     async resourcesRead(req: JsonRpcRequest): Promise<JsonRpcResponse> {
         const params = req.params as { uri?: string } | undefined;
         const uri = params?.uri;
 
         if (!uri) return Mcp.invalidParams(req.id, "Missing required parameter: uri");
-        const instance = this._resourceIndex.get(uri);
+        const instance = this._resourceIndex.get(uri) ?? this._matchTemplate(uri);
         if (!instance) return Mcp.resourceNotFound(req.id, uri);
         const r = await instance.readResourceAsync(uri);
         if (!r) return Mcp.resourceNotFound(req.id, uri);
@@ -248,7 +246,7 @@ export class McpServer implements IMcpServer, IMcpServerHandlers {
         const uri = args["uri"] as string | undefined;
         if (!uri) return Mcp.invalidParams(req.id, "Missing required parameter: uri");
 
-        const r = this._resourceIndex.get(uri);
+        const r = this._resourceIndex.get(uri) ?? this._matchTemplate(uri);
         if (!r) return Mcp.instanceNotFound(req.id, uri);
         return this._callTool(req, r, uri, name, args);
     }
@@ -449,6 +447,31 @@ export class McpServer implements IMcpServer, IMcpServerHandlers {
     private _deriveCapabilities(): McpServerCapabilities {
         if (this._behaviors.size === 0) return {};
         return { resources: { listChanged: true }, tools: { listChanged: true } };
+    }
+
+    /**
+     * Finds the behavior whose URI template matches `uri`.
+     *
+     * Converts each `{variable}` placeholder to a regex segment that matches
+     * any non-slash sequence, then tests the full URI against the pattern.
+     * Returns the first matching behavior, or `undefined` when none match.
+     *
+     * Example: template `babylon://camera/{cameraId}` matches `babylon://camera/main`.
+     */
+    private _matchTemplate(uri: string): IMcpRuntimeOperations | undefined {
+        for (const behavior of this._behaviors.values()) {
+            for (const { uriTemplate } of behavior.getResourceTemplates()) {
+                // Escape regex meta-chars in the template, then replace {var} with a
+                // segment wildcard.  Anchors ensure the whole URI must match.
+                const pattern = uriTemplate
+                    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // escape special chars
+                    .replace(/\\\{[^}]+\\\}/g, "[^/]+");     // un-escape & expand {var}
+                if (new RegExp(`^${pattern}$`).test(uri)) {
+                    return behavior;
+                }
+            }
+        }
+        return undefined;
     }
 
     /** Invokes a tool on a specific instance and wraps the result as a JSON-RPC response. */

@@ -59,8 +59,12 @@ function makeBundle(name, entry, out, mode) {
                 callback();
             },
             ({ request }, callback) => {
+                // @dev/core classes (McpBehavior, McpAdapterBase, …) live in the
+                // mcp-server.js bundle (window.McpServer), NOT in mcp-core.js
+                // (window.McpCore), which only carries TypeScript interfaces that
+                // are fully erased at runtime and produce no JavaScript values.
                 if (request.match("^@dev/core")) {
-                    return callback(null, "McpCore");
+                    return callback(null, "McpServer");
                 }
                 callback();
             },

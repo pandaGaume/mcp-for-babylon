@@ -54,8 +54,13 @@
         <!-- Babylon.js core (CDN) -->
         <script src="https://cdn.babylonjs.com/babylon.js"></script>
 
-        <!-- MCP server bundle -->
+        <!-- MCP bundles — load order matters:
+             1. mcp-core.js    → window.McpCore    (shared interfaces, externalized by mcp-babylon)
+             2. mcp-server.js  → window.McpServer   (McpServerBuilder and protocol impl)
+             3. mcp-babylon.js → window.McpBabylon  (McpCameraAdapter, McpCameraBehavior, …) -->
+        <script src="/bundle/mcp-core.js"></script>
         <script src="/bundle/mcp-server.js"></script>
+        <script src="/bundle/mcp-babylon.js"></script>
 
         <script>
             "use strict";
@@ -209,7 +214,7 @@
                     sphere.material   = mat;
 
                     log(
-                        `Sphere "${h}" → (${sphere.position.x.toFixed(2)}, 1.00, ${sphere.position.z.toFixed(2)})`,
+                        `Sphere "${h}" → (${sphere.position.x.toFixed(2)}, 1.00, ${sphere.position.z.toFixed(2)}) Left handed Y upward.`,
                         "dim"
                     );
                 }
@@ -251,10 +256,35 @@
             // MCP server lifecycle
             // =========================================================
             const { McpServerBuilder } = window.McpServer;
+            const { McpCameraAdapter, McpCameraBehavior } = window.McpBabylon;
             let server = null;
 
+            /**
+             * Creates and returns the MCP behavior(s) for this scene.
+             * Called by the Start button handler just before builder.build().
+             *
+             * Pattern:
+             *   Adapter  — thin bridge to the live Babylon.js scene
+             *              (reads camera state, dispatches tool calls).
+             *   Behavior — MCP-facing schema layer
+             *              (declares resources, URI templates, tool definitions).
+             *
+             * @param {BABYLON.Scene} scene
+             * @returns {import('@dev/core').IMcpBehavior}
+             */
             function createBehaviour(scene) {
-                // TODO: add behavious…
+                // McpCameraAdapter indexes all cameras in the scene, keeps the index
+                // in sync via onNewCameraAddedObservable / onCameraRemovedObservable,
+                // and handles readResourceAsync / executeToolAsync at runtime.
+                const adapter = new McpCameraAdapter(scene);
+
+                // McpCameraBehavior owns the MCP-protocol identity:
+                //   - resource  : babylon://camera          (list all cameras)
+                //   - template  : babylon://camera/{cameraId}  (single camera state)
+                //   - tool      : camera.setTarget          (move the look-at point)
+                const behavior = new McpCameraBehavior(adapter);
+
+                return behavior;
             }
             
             document.getElementById("start-btn").addEventListener("click", async () => {
