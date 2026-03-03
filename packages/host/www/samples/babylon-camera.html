@@ -286,15 +286,35 @@
                                 protocolVersion: "2024-11-05",
                                 serverInfo: { name, version: "0.0.0" },
                                 instructions:
-                                    "You are connected to a LIVE, running Babylon.js 3D scene. " +
-                                    "This MCP server exposes real-time camera controls. " +
-                                    "ALWAYS use the provided MCP tools to perform actions on the scene — " +
-                                    "do NOT write, suggest, or modify any HTML or JavaScript code. " +
-                                    "Workflow: (1) call the 'resources/read' MCP method with URI 'babylon://camera' " +
-                                    "to list the cameras currently in the scene and obtain their URIs, " +
-                                    "(2) pass the chosen URI as the 'uri' argument when calling any camera tool. " +
-                                    "Tool calls take effect immediately on the running scene — " +
-                                    "no compilation, no reload, no code editing required.",
+                                    "You are connected to a LIVE Babylon.js 3D scene focused on camera control. " +
+                                    "ALWAYS use MCP tools and resources — do NOT write or suggest any code. " +
+
+                                    "\n\nSCENE LAYOUT: " +
+                                    "A clock face of 12 coloured spheres (named '0' to '11') arranged in a circle of radius 5 on a dark ground plane. " +
+                                    "Sphere '0' is at noon (x=0, z=-5), '3' at 3 o'clock (x=5, z=0), '6' at 6 o'clock (x=0, z=5), '9' at 9 o'clock (x=-5, z=0). " +
+                                    "All spheres rest at y=1. The scene uses a right-handed y-up coordinate system." +
+
+                                    "\n\nCAMERA RESOURCES: " +
+                                    "Read 'babylon://camera' to list all cameras with their URIs. " +
+                                    "Read 'babylon://camera/{name}' to get the full state of a specific camera (position, target, FOV, projection mode, viewport, etc.)." +
+
+                                    "\n\nTOOL ROUTING: " +
+                                    "Every camera tool requires the 'uri' argument set to a specific camera URI (e.g. 'babylon://camera/camera'). " +
+                                    "Always read 'babylon://camera' first to obtain the exact URI before calling any tool." +
+
+                                    "\n\nAVAILABLE OPERATIONS (non-exhaustive): " +
+                                    "camera_set_position / camera_set_target / camera_look_at — teleport and aim. " +
+                                    "camera_orbit — rotate around the current look-at target by incremental azimuth/elevation. " +
+                                    "camera_dolly — move toward or away from the target along the view axis. " +
+                                    "camera_pan — slide camera and target together in the screen plane. " +
+                                    "camera_set_fov / camera_zoom / camera_set_projection — optics. " +
+                                    "camera_animate_to / camera_animate_orbit / camera_follow_path / camera_shake — smooth animated moves. " +
+                                    "camera_stop_animation — stop any running animation. " +
+                                    "camera_lock / camera_unlock — detach or restore interactive mouse/keyboard control. " +
+                                    "camera_snapshot — capture a base64 PNG from the camera's point of view." +
+
+                                    "\n\nCOORDINATES: right-handed y-up. " +
+                                    "The initial camera is at (0, 5, 0) looking at the noon sphere (0, 1, -5).",
                             };
                         },
                     });

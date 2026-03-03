@@ -1,0 +1,468 @@
+import { IMcpBehaviorAdapter, JsonRpcMimeType, McpBehavior, McpBehaviorOptions, McpResource, McpResourceTemplate, McpTool } from "@dev/core";
+import { McpLightNamespace } from "../mcp.commons";
+
+export class McpLightBehavior extends McpBehavior {
+    // -------------------------------------------------------------------------
+    // Tool name constants
+    // -------------------------------------------------------------------------
+
+    /** Creates a new light in the scene. */
+    public static readonly LightCreateFn = "light_create";
+
+    /** Removes a light from the scene and disposes it. */
+    public static readonly LightRemoveFn = "light_remove";
+
+    /** Enables or disables a light without removing it. */
+    public static readonly LightSetEnabledFn = "light_set_enabled";
+
+    /** Sets the intensity (brightness multiplier) of a light. */
+    public static readonly LightSetIntensityFn = "light_set_intensity";
+
+    /** Sets the diffuse (main) color emitted by a light. */
+    public static readonly LightSetDiffuseColorFn = "light_set_diffuse_color";
+
+    /** Sets the specular (highlight) color emitted by a light. */
+    public static readonly LightSetSpecularColorFn = "light_set_specular_color";
+
+    /** Sets the world-space position of a positional light (point, spot, directional). */
+    public static readonly LightSetPositionFn = "light_set_position";
+
+    /** Sets the direction vector of a directional, spot, or hemispheric light. */
+    public static readonly LightSetDirectionFn = "light_set_direction";
+
+    /**
+     * Aims a spot or directional light at a world-space target point.
+     * Computes direction = normalize(target − position).
+     */
+    public static readonly LightSetTargetFn = "light_set_target";
+
+    /** Sets the effective range of a point or spot light in world units. */
+    public static readonly LightSetRangeFn = "light_set_range";
+
+    /** Sets the cone half-angle (degrees) of a spot light. */
+    public static readonly LightSpotSetAngleFn = "light_spot_set_angle";
+
+    /** Sets the falloff exponent of a spot light. */
+    public static readonly LightSpotSetExponentFn = "light_spot_set_exponent";
+
+    /** Sets the ground (bottom hemisphere) color of a hemispheric light. */
+    public static readonly LightHemiSetGroundColorFn = "light_hemi_set_ground_color";
+
+    /** Returns the current scene-level ambient color and enabled state. */
+    public static readonly SceneGetAmbientFn = "scene_get_ambient";
+
+    /** Sets the scene ambient color (scene.ambientColor). */
+    public static readonly SceneSetAmbientColorFn = "scene_set_ambient_color";
+
+    /** Enables or disables scene ambient lighting; restores the previous color when re-enabled. */
+    public static readonly SceneSetAmbientEnabledFn = "scene_set_ambient_enabled";
+
+    /** Applies a partial patch to a light; inapplicable fields are silently ignored. */
+    public static readonly LightUpdateFn = "light_update";
+
+    // -------------------------------------------------------------------------
+
+    public constructor(adapter: IMcpBehaviorAdapter, options: McpBehaviorOptions = {}) {
+        super(adapter, {
+            ...options,
+            domain: options.domain ?? adapter.domain,
+            namespace: options.namespace ?? McpLightNamespace,
+        });
+    }
+
+    protected override _buildTools(): McpTool[] {
+        const vec3 = {
+            type: "object",
+            properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+                z: { type: "number" },
+            },
+            required: ["x", "y", "z"],
+            additionalProperties: false,
+        };
+
+        const color3 = {
+            type: "object",
+            properties: {
+                r: { type: "number", description: "Red channel [0–1]." },
+                g: { type: "number", description: "Green channel [0–1]." },
+                b: { type: "number", description: "Blue channel [0–1]." },
+            },
+            required: ["r", "g", "b"],
+            additionalProperties: false,
+        };
+
+        const namespaceUri = {
+            type: "string",
+            description: `Namespace URI. Always pass "${this.baseUri}" for this tool.`,
+        };
+
+        const lightUri = {
+            type: "string",
+            description: `Light URI, e.g. ${this.baseUri}/MyLight. Read the resource ${this.baseUri} to list available URIs.`,
+        };
+
+        return [
+            // -----------------------------------------------------------------
+            // light.create
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightCreateFn,
+                description:
+                    "Creates a new light in the scene. Required fields vary by type:\n" +
+                    "- point: name, position\n" +
+                    "- directional: name, direction\n" +
+                    "- spot: name, position, direction, angle\n" +
+                    "- hemispheric: name, direction\n" +
+                    "Returns the URI of the newly created light.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: namespaceUri,
+                        type: {
+                            type: "string",
+                            enum: ["point", "directional", "spot", "hemispheric"],
+                            description: "Type of light to create.",
+                        },
+                        name: { type: "string", description: "Name for the new light. Must be unique in the scene." },
+                        position: { ...vec3, description: "World-space position (right-handed y-up). Required for point and spot." },
+                        direction: { ...vec3, description: "Direction vector (right-handed y-up). Required for directional, spot, and hemispheric." },
+                        angle: { type: "number", description: "Cone half-angle in degrees. Required for spot. Must be in (0, 90)." },
+                        exponent: { type: "number", description: "Falloff exponent. Spot only, optional (default 2)." },
+                        intensity: { type: "number", description: "Initial intensity (default 1)." },
+                        diffuseColor: { ...color3, description: "Initial diffuse color (default white)." },
+                        specularColor: { ...color3, description: "Initial specular color (default white)." },
+                        groundColor: { ...color3, description: "Initial ground color. Hemispheric only, optional." },
+                        range: { type: "number", description: "Effective range in world units. Point and spot only, optional." },
+                    },
+                    required: ["uri", "type", "name"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.remove
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightRemoveFn,
+                description: "Removes a light from the scene and disposes all its resources.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                    },
+                    required: ["uri"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setEnabled
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetEnabledFn,
+                description: "Enables or disables a light without removing it from the scene.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        enabled: { type: "boolean", description: "True to enable the light, false to disable it." },
+                    },
+                    required: ["uri", "enabled"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setIntensity
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetIntensityFn,
+                description: "Sets the intensity (brightness multiplier) of a light. Default is 1. Values above 1 overbrighten.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        intensity: { type: "number", description: "New intensity. Must be >= 0." },
+                    },
+                    required: ["uri", "intensity"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setDiffuseColor
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetDiffuseColorFn,
+                description: "Sets the diffuse (main) color emitted by a light. Channels are in [0, 1].",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        color: color3,
+                    },
+                    required: ["uri", "color"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setSpecularColor
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetSpecularColorFn,
+                description: "Sets the specular (highlight) color emitted by a light. Channels are in [0, 1].",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        color: color3,
+                    },
+                    required: ["uri", "color"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setPosition
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetPositionFn,
+                description:
+                    "Sets the world-space position of a light. " +
+                    "For point and spot lights this is the emission origin. " +
+                    "For directional lights it only moves the shadow-frustum origin (no effect on light direction). " +
+                    "Not applicable to hemispheric lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        position: { ...vec3, description: "New world-space position (right-handed y-up)." },
+                    },
+                    required: ["uri", "position"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setDirection
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetDirectionFn,
+                description:
+                    "Sets the direction vector of a directional, spot, or hemispheric light. " +
+                    "The vector is normalised internally. " +
+                    "For hemispheric lights, direction points toward the sky (bright hemisphere). " +
+                    "Not applicable to point lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        direction: { ...vec3, description: "New direction vector (right-handed y-up). Will be normalised." },
+                    },
+                    required: ["uri", "direction"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setTarget
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetTargetFn,
+                description:
+                    "Aims a spot or directional light at a world-space target point. " +
+                    "Computes direction = normalize(target − position). " +
+                    "Only applicable to spot and directional lights (requires a position).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        target: { ...vec3, description: "World-space point to aim the light at (right-handed y-up)." },
+                    },
+                    required: ["uri", "target"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.setRange
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSetRangeFn,
+                description:
+                    "Sets the effective range of a point or spot light. Beyond this distance the light contributes nothing. Not applicable to directional or hemispheric lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        range: { type: "number", description: "Range in world units. Must be > 0." },
+                    },
+                    required: ["uri", "range"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.spot.setAngle
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSpotSetAngleFn,
+                description: "Sets the cone half-angle of a spot light in degrees. Smaller angle = tighter, more focused beam. Only applicable to spot lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        angle: { type: "number", description: "Cone half-angle in degrees. Must be in (0, 90)." },
+                    },
+                    required: ["uri", "angle"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.spot.setExponent
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightSpotSetExponentFn,
+                description: "Sets the falloff exponent of a spot light. Higher values concentrate the light toward the cone axis. Only applicable to spot lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        exponent: { type: "number", description: "Falloff exponent. Must be >= 0." },
+                    },
+                    required: ["uri", "exponent"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.hemi.setGroundColor
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightHemiSetGroundColorFn,
+                description: "Sets the ground (bottom hemisphere) color of a hemispheric light. Channels are in [0, 1]. Only applicable to hemispheric lights.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        color: color3,
+                    },
+                    required: ["uri", "color"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // scene.getAmbient
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.SceneGetAmbientFn,
+                description: "Returns the current scene-level ambient light: enabled state and color (r, g, b in [0, 1]).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: namespaceUri,
+                    },
+                    required: ["uri"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // scene.setAmbientColor
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.SceneSetAmbientColorFn,
+                description: "Sets the scene ambient color (scene.ambientColor). Affects all materials that use ambient. Channels are in [0, 1].",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: namespaceUri,
+                        color: color3,
+                    },
+                    required: ["uri", "color"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // scene.setAmbientEnabled
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.SceneSetAmbientEnabledFn,
+                description: "Enables or disables scene ambient lighting. When disabled, scene.ambientColor is set to black; the previous color is restored when re-enabled.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: namespaceUri,
+                        enabled: { type: "boolean", description: "True to enable ambient, false to disable." },
+                    },
+                    required: ["uri", "enabled"],
+                    additionalProperties: false,
+                },
+            },
+
+            // -----------------------------------------------------------------
+            // light.update — batch patch
+            // -----------------------------------------------------------------
+            {
+                name: McpLightBehavior.LightUpdateFn,
+                description:
+                    "Applies a partial patch to an existing light in one call. " +
+                    "Fields that are not applicable to the light type are silently ignored (reported in the response). " +
+                    "Useful for batching multiple property changes without issuing separate tool calls.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        uri: lightUri,
+                        patch: {
+                            type: "object",
+                            description: "Partial state to apply. All fields optional.",
+                            properties: {
+                                enabled: { type: "boolean" },
+                                intensity: { type: "number" },
+                                diffuseColor: color3,
+                                specularColor: color3,
+                                position: { ...vec3, description: "point, spot, directional (shadow frustum)." },
+                                direction: { ...vec3, description: "directional, spot, hemispheric." },
+                                range: { type: "number", description: "point, spot only." },
+                                angle: { type: "number", description: "Spot only. Cone half-angle in degrees." },
+                                exponent: { type: "number", description: "Spot only. Falloff exponent." },
+                                groundColor: { ...color3, description: "Hemispheric only. Ground color." },
+                            },
+                            additionalProperties: false,
+                        },
+                    },
+                    required: ["uri", "patch"],
+                    additionalProperties: false,
+                },
+            },
+        ];
+    }
+
+    protected override _buildResources(): McpResource[] {
+        return [
+            {
+                uri: `${this.baseUri}`,
+                name: "Lights list.",
+                description: "Lights available in the scene.",
+                mimeType: JsonRpcMimeType,
+            },
+        ];
+    }
+
+    protected override _buildTemplate(): McpResourceTemplate[] {
+        return [
+            {
+                uriTemplate: `${this.baseUri}/{lightId}`,
+                name: "Scene light",
+                description: "A single light in the scene.",
+                mimeType: JsonRpcMimeType,
+            },
+        ];
+    }
+}
