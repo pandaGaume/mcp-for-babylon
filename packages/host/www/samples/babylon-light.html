@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>MCP Babylon — Template</title>
+        <link rel="stylesheet" href="css/sample.css" />
+    </head>
+    <body>
+        <header>
+            <h1 id="page-title">MCP Babylon — Template</h1>
+            <span id="status-badge" class="badge disconnected">Disconnected</span>
+        </header>
+
+        <div class="layout">
+            <!-- ── Left panel: connection ──────────────────── -->
+            <aside class="left-panel panel">
+                <div class="panel-title">Connection</div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label for="ws-url">Tunnel provider base URL</label>
+                        <input type="text" id="ws-url" value="ws://localhost:3000/provider" />
+                    </div>
+                    <div class="field">
+                        <label for="server-name">Server name</label>
+                        <input type="text" id="server-name" value="" />
+                    </div>
+                    <div class="btn-row">
+                        <button id="start-btn">▶ Start</button>
+                        <button id="stop-btn" disabled>■ Stop</button>
+                    </div>
+                    <div class="field" id="mcp-endpoint-field" style="display: none; margin-top: 14px">
+                        <label for="mcp-endpoint">MCP endpoint</label>
+                        <input type="text" id="mcp-endpoint" readonly style="color: var(--green); cursor: text" />
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ── Right column ────────────────────────────── -->
+            <div class="right-column">
+                <!-- Top: Babylon scene -->
+                <div class="scene-panel">
+                    <canvas id="renderCanvas"></canvas>
+                </div>
+
+                <!-- Bottom: console -->
+                <section class="console-panel panel">
+                    <div class="panel-title">Console</div>
+                    <div class="panel-body" id="console-output"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Babylon.js core (CDN) -->
+        <script src="https://cdn.babylonjs.com/babylon.js"></script>
+
+        <!-- MCP bundles — load order matters:
+             1. mcp-core.js    → window.McpCore    (shared interfaces, externalized by mcp-babylon)
+             2. mcp-server.js  → window.McpServer   (McpServerBuilder and protocol impl)
+             3. mcp-babylon.js → window.McpBabylon  (adapters and behaviors) -->
+        <script src="/bundle/mcp-core.js"></script>
+        <script src="/bundle/mcp-server.js"></script>
+        <script src="/bundle/mcp-babylon.js"></script>
+
+        <script>
+            "use strict";
+
+            // =========================================================
+            // Page title & server name derived from the file name
+            // =========================================================
+            (function () {
+                const path = window.location.pathname;
+                const file = path.substring(path.lastIndexOf("/") + 1);
+                const name = file.split(".").slice(0, -1).join(".") || file;
+                document.getElementById("server-name").value = name;
+                document.getElementById("page-title").textContent = `MCP Babylon — ${name}`;
+                document.title = `MCP Babylon — ${name}`;
+            })();
+
+            // =========================================================
+            // Console helpers
+            // =========================================================
+            const consoleEl = document.getElementById("console-output");
+
+            function log(msg, level = "info") {
+                const ts = new Date().toLocaleTimeString("en", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+                const div = document.createElement("div");
+                div.className = `log-line ${level}`;
+                div.innerHTML = `<span class="ts">${ts}</span>  <span class="msg">${escHtml(msg)}</span>`;
+                consoleEl.appendChild(div);
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+
+            function escHtml(s) {
+                return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            }
+
+            // =========================================================
+            // Status badge
+            // =========================================================
+            const badgeEl = document.getElementById("status-badge");
+
+            function setStatus(state) {
+                badgeEl.className = `badge ${state}`;
+                badgeEl.textContent =
+                    {
+                        disconnected: "Disconnected",
+                        connecting: "Connecting…",
+                        connected: "Connected",
+                    }[state] ?? state;
+            }
+
+            // =========================================================
+            // Babylon.js engine + scene
+            // =========================================================
+            const canvas = document.getElementById("renderCanvas");
+            const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+            const scene = new BABYLON.Scene(engine);
+
+            engine.runRenderLoop(() => scene.render());
+            window.addEventListener("resize", () => engine.resize());
+
+            // =========================================================
+            // Scene — lighting showcase
+            //
+            // Layout (top view, Y-up):
+            //
+            //              [col]  <- central column (obelisk)
+            //
+            //   [sph-NW]           [sph-NE]
+            //         \               /
+            //          \             /
+            //     [sph-W]--[ground]--[sph-E]
+            //          /             \
+            //         /               \
+            //   [sph-SW]           [sph-SE]
+            //
+            // Pre-existing lights (NOT removable via MCP):
+            //   "sky"  — HemisphericLight, dim fill light from above
+            //   "sun"  — DirectionalLight, warm key light from upper-right-front
+            //
+            // All materials use StandardMaterial with high specular to make
+            // lighting changes visually obvious.
+            // =========================================================
+
+            function createScene(scene) {
+                // Scene clear color — dark to make lighting more dramatic
+                scene.clearColor = new BABYLON.Color4(0.05, 0.05, 0.08, 1);
+
+                // Minimal ambient so unlit faces aren't pure black
+                scene.ambientColor = new BABYLON.Color3(0.08, 0.08, 0.1);
+
+                // ── Pre-existing lights ──────────────────────────────────
+                // These are registered in the MCP index (readable, controllable)
+                // but are protected — light_remove will refuse to dispose them.
+
+                const sky = new BABYLON.HemisphericLight("sky", new BABYLON.Vector3(0, 1, 0), scene);
+                sky.intensity = 0.35;
+                sky.diffuse   = new BABYLON.Color3(0.55, 0.7, 1.0);   // cool blue-white sky
+                sky.groundColor = new BABYLON.Color3(0.12, 0.1, 0.08); // warm dark ground bounce
+                sky.specular  = BABYLON.Color3.Black();                 // no specular from hemi
+
+                const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-1, -2, -1).normalize(), scene);
+                sun.intensity = 0.9;
+                sun.diffuse   = new BABYLON.Color3(1.0, 0.88, 0.65);  // warm golden sun
+                sun.specular  = new BABYLON.Color3(1.0, 0.95, 0.8);
+
+                log('Light "sky" — HemisphericLight (pre-existing, protected)', "dim");
+                log('Light "sun" — DirectionalLight  (pre-existing, protected)', "dim");
+
+                // ── Ground plane ─────────────────────────────────────────
+                const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 22, height: 22 }, scene);
+                const gMat = new BABYLON.StandardMaterial("groundMat", scene);
+                gMat.diffuseColor  = new BABYLON.Color3(0.15, 0.15, 0.2);
+                gMat.specularColor = new BABYLON.Color3(0.08, 0.08, 0.1);
+                gMat.ambientColor  = BABYLON.Color3.White();
+                ground.material = gMat;
+
+                // ── Central obelisk ──────────────────────────────────────
+                const col = BABYLON.MeshBuilder.CreateBox("obelisk", { width: 1, height: 6, depth: 1 }, scene);
+                col.position.y = 3;
+                const colMat = new BABYLON.StandardMaterial("obeliskMat", scene);
+                colMat.diffuseColor  = new BABYLON.Color3(0.85, 0.85, 0.9);
+                colMat.specularColor = new BABYLON.Color3(0.6, 0.6, 0.7);
+                colMat.specularPower = 64;
+                colMat.ambientColor  = BABYLON.Color3.White();
+                col.material = colMat;
+
+                // ── Six showcase spheres around the obelisk ──────────────
+                //
+                // Arranged in a hexagon at radius 5, height y = 1 (resting on ground).
+                // Each has a strongly saturated diffuse color and good specular
+                // so point/spot lights placed nearby produce vivid highlights.
+                //
+                const RADIUS = 5;
+                const sphereDefs = [
+                    { name: "sphere-N",  angle:  90, color: new BABYLON.Color3(1.0, 0.18, 0.18) }, // red
+                    { name: "sphere-NE", angle:  30, color: new BABYLON.Color3(1.0, 0.55, 0.05) }, // orange
+                    { name: "sphere-SE", angle: -30, color: new BABYLON.Color3(0.15, 0.85, 0.2)  }, // green
+                    { name: "sphere-S",  angle: -90, color: new BABYLON.Color3(0.1,  0.55, 1.0)  }, // blue
+                    { name: "sphere-SW", angle: -150,color: new BABYLON.Color3(0.7,  0.1,  1.0)  }, // violet
+                    { name: "sphere-NW", angle:  150,color: new BABYLON.Color3(1.0,  0.12, 0.7)  }, // magenta
+                ];
+
+                for (const def of sphereDefs) {
+                    const rad = (def.angle * Math.PI) / 180;
+                    const sphere = BABYLON.MeshBuilder.CreateSphere(def.name, { diameter: 2, segments: 20 }, scene);
+                    sphere.position.x = RADIUS * Math.cos(rad);
+                    sphere.position.y = 1;
+                    sphere.position.z = RADIUS * Math.sin(rad);
+
+                    const mat = new BABYLON.StandardMaterial(def.name + "Mat", scene);
+                    mat.diffuseColor  = def.color;
+                    mat.specularColor = def.color.scale(0.8);
+                    mat.specularPower = 48;
+                    mat.ambientColor  = BABYLON.Color3.White();
+                    sphere.material = mat;
+
+                    log(`Sphere "${def.name}" at (${sphere.position.x.toFixed(1)}, 1, ${sphere.position.z.toFixed(1)})`, "dim");
+                }
+
+                // ── Three raised platforms ───────────────────────────────
+                // Flat cylinders on which the AI can place point / spot lights.
+                const platformDefs = [
+                    { name: "platform-A", x:  0, z:  8 },
+                    { name: "platform-B", x: -7, z: -5 },
+                    { name: "platform-C", x:  7, z: -5 },
+                ];
+                for (const p of platformDefs) {
+                    const cyl = BABYLON.MeshBuilder.CreateCylinder(p.name, { height: 0.2, diameter: 2.5, tessellation: 20 }, scene);
+                    cyl.position.set(p.x, 0.1, p.z);
+                    const mat = new BABYLON.StandardMaterial(p.name + "Mat", scene);
+                    mat.diffuseColor  = new BABYLON.Color3(0.28, 0.28, 0.35);
+                    mat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.5);
+                    mat.specularPower = 32;
+                    mat.ambientColor  = BABYLON.Color3.White();
+                    cyl.material = mat;
+                }
+
+                // ── Camera ───────────────────────────────────────────────
+                const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 4, Math.PI / 3.5, 22, BABYLON.Vector3.Zero(), scene);
+                camera.lowerRadiusLimit = 5;
+                camera.upperRadiusLimit = 40;
+                camera.attachControl(canvas, true);
+                log("Camera ready — orbit with mouse. Use MCP tools to control lights.", "ok");
+
+                return scene;
+            }
+
+            createScene(scene);
+
+            // =========================================================
+            // MCP server lifecycle
+            // =========================================================
+            const { McpServerBuilder } = window.McpServer;
+            const { McpLightAdapter, McpLightBehavior } = window.McpBabylon;
+            let server = null;
+
+            /**
+             * Creates and returns the MCP behavior for this scene.
+             *
+             * McpLightAdapter  — indexes all scene lights, keeps the index in sync,
+             *                    handles readResourceAsync / executeToolAsync.
+             * McpLightBehavior — MCP-facing schema layer: resources, URI templates,
+             *                    and tool definitions.
+             *
+             * @param {BABYLON.Scene} scene
+             * @returns {import('@dev/core').IMcpBehavior}
+             */
+            function createBehaviour(scene) {
+                const lightAdapter  = new McpLightAdapter(scene);
+                const lightBehavior = new McpLightBehavior(lightAdapter);
+                return lightBehavior;
+            }
+
+            document.getElementById("start-btn").addEventListener("click", async () => {
+                const providerBase = document.getElementById("ws-url").value.trim().replace(/\/$/, "");
+                const name = document.getElementById("server-name").value.trim() || "babylon-light";
+
+                const wsUrl = `${providerBase}/${encodeURIComponent(name)}`;
+
+                const httpBase = wsUrl.replace(/^ws(s?):\/\//, "http$1://").replace(/\/provider\//, "/");
+                const mcpHttpUrl = httpBase.endsWith("/mcp") ? httpBase : httpBase + "/mcp";
+
+                log(`Connecting to ${wsUrl} …`, "dim");
+                setStatus("connecting");
+
+                const builder = new McpServerBuilder()
+                    .withWsUrl(wsUrl)
+                    .withName(name)
+                    .withInitializer({
+                        initialize(_clientInfo, _caps) {
+                            return {
+                                protocolVersion: "2024-11-05",
+                                serverInfo: { name, version: "0.0.0" },
+                                instructions:
+                                    "You are connected to a LIVE Babylon.js 3D scene focused on lighting. " +
+                                    "ALWAYS use MCP tools and resources — do NOT write or suggest any code. " +
+
+                                    "\n\nSCENE LAYOUT: " +
+                                    "A central obelisk surrounded by 6 coloured spheres (sphere-N, sphere-NE, sphere-SE, sphere-S, sphere-SW, sphere-NW) " +
+                                    "arranged in a hexagon of radius 5. Three raised cylindrical platforms (platform-A at z=8, platform-B at SW, platform-C at SE) " +
+                                    "are ideal positions for new point or spot lights." +
+
+                                    "\n\nLIGHT RESOURCES: " +
+                                    "Read 'babylon://light' to list all lights with their URIs. " +
+                                    "Read 'babylon://light/{name}' to get the full state of a specific light (type, colors, intensity, position, direction, etc.)." +
+
+                                    "\n\nTOOL ROUTING: " +
+                                    "Tools that operate on the namespace (light_create, scene_get_ambient, scene_set_ambient_color, scene_set_ambient_enabled) " +
+                                    "require uri='babylon://light'. " +
+                                    "All other tools (light_set_*, light_update, light_remove, light_spot_*, light_hemi_*) " +
+                                    "require the specific light URI, e.g. uri='babylon://light/sun'." +
+
+                                    "\n\nPRE-EXISTING LIGHTS: " +
+                                    "'sky' (HemisphericLight) and 'sun' (DirectionalLight) were created before the MCP server started. " +
+                                    "You can read and modify them freely, but light_remove will refuse to dispose them — this is by design. " +
+                                    "Only lights you create via light_create can be removed." +
+
+                                    "\n\nCOORDINATES: right-handed y-up system. " +
+                                    "Spheres rest at y=1. Platforms are at y=0.1. " +
+                                    "Good positions for new lights: above platforms (e.g. { x:0, y:3, z:8 }) or above spheres.",
+                            };
+                        },
+                    });
+
+                const behaviour = createBehaviour(scene);
+                builder.register(behaviour);
+                server = builder.build();
+
+                try {
+                    await server.start();
+                    setStatus("connected");
+                    log(`Connected as provider — "${name}"`, "ok");
+                    log(`MCP Inspector → ${mcpHttpUrl}`, "ok");
+                    log("Waiting for MCP client…", "dim");
+
+                    document.getElementById("start-btn").disabled = true;
+                    document.getElementById("stop-btn").disabled = false;
+                    document.getElementById("mcp-endpoint").value = mcpHttpUrl;
+                    document.getElementById("mcp-endpoint-field").style.display = "";
+                } catch (err) {
+                    setStatus("disconnected");
+                    log(`Failed to connect: ${err}`, "error");
+                    server = null;
+                }
+            });
+
+            document.getElementById("stop-btn").addEventListener("click", async () => {
+                if (!server) return;
+                try {
+                    await server.stop();
+                    log("Server stopped.", "warn");
+                } catch (err) {
+                    log(`Stop error: ${err}`, "error");
+                } finally {
+                    server = null;
+                    setStatus("disconnected");
+                    document.getElementById("start-btn").disabled = false;
+                    document.getElementById("stop-btn").disabled = true;
+                    document.getElementById("mcp-endpoint-field").style.display = "none";
+                    document.getElementById("mcp-endpoint").value = "";
+                }
+            });
+
+            log("Ready. Press ▶ Start to connect as an MCP provider.", "dim");
+        </script>
+    </body>
+</html>
