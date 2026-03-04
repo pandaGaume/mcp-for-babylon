@@ -119,10 +119,7 @@ export class McpMeshAdapter extends McpAdapterBase {
         // ---- Instance tools — resolve mesh from URI ----
         const mesh = this._indexedMeshes.get(uri);
         if (!mesh) {
-            return McpToolResults.error(
-                `No mesh found for URI "${uri}". ` +
-                    `Read the resource "${McpMeshResourceUriPrefix}" to get the list of available mesh URIs.`
-            );
+            return McpToolResults.error(`No mesh found for URI "${uri}". ` + `Read the resource "${McpMeshResourceUriPrefix}" to get the list of available mesh URIs.`);
         }
 
         switch (toolName) {
@@ -188,7 +185,13 @@ export class McpMeshAdapter extends McpAdapterBase {
 
                 const targetPos = this._isVec3(args["position"]) ? this._tobjsVec3(args["position"] as { x: number; y: number; z: number }) : null;
                 const targetRot = this._isVec3(args["rotation"]) ? this._tobjsRotationDeg(args["rotation"] as { x: number; y: number; z: number }) : null;
-                const targetSc = this._isVec3(args["scaling"]) ? new Vector3((args["scaling"] as { x: number; y: number; z: number }).x, (args["scaling"] as { x: number; y: number; z: number }).y, (args["scaling"] as { x: number; y: number; z: number }).z) : null;
+                const targetSc = this._isVec3(args["scaling"])
+                    ? new Vector3(
+                          (args["scaling"] as { x: number; y: number; z: number }).x,
+                          (args["scaling"] as { x: number; y: number; z: number }).y,
+                          (args["scaling"] as { x: number; y: number; z: number }).z
+                      )
+                    : null;
 
                 if (!targetPos && !targetRot && !targetSc) {
                     return McpToolResults.error(`"${toolName}" requires at least one of: position, rotation, scaling.`);
@@ -425,9 +428,7 @@ export class McpMeshAdapter extends McpAdapterBase {
     }
 
     private _vec3Error(toolName: string, paramName: string, received: unknown): McpToolResult {
-        return McpToolResults.error(
-            `Invalid "${paramName}" for "${toolName}". Expected { x, y, z } with finite numbers. Received: ${JSON.stringify(received)}`
-        );
+        return McpToolResults.error(`Invalid "${paramName}" for "${toolName}". Expected { x, y, z } with finite numbers. Received: ${JSON.stringify(received)}`);
     }
 
     /**
@@ -507,21 +508,45 @@ export class McpMeshAdapter extends McpAdapterBase {
 
         let easing: EasingFunction;
         switch (type) {
-            case "sine":    easing = new SineEase();        break;
-            case "quad":    easing = new QuadraticEase();   break;
-            case "cubic":   easing = new CubicEase();       break;
-            case "circle":  easing = new CircleEase();      break;
-            case "expo":    easing = new ExponentialEase();  break;
-            case "back":    easing = new BackEase();         break;
-            case "bounce":  easing = new BounceEase();       break;
-            case "elastic": easing = new ElasticEase();      break;
-            default:        easing = new SineEase();         break;
+            case "sine":
+                easing = new SineEase();
+                break;
+            case "quad":
+                easing = new QuadraticEase();
+                break;
+            case "cubic":
+                easing = new CubicEase();
+                break;
+            case "circle":
+                easing = new CircleEase();
+                break;
+            case "expo":
+                easing = new ExponentialEase();
+                break;
+            case "back":
+                easing = new BackEase();
+                break;
+            case "bounce":
+                easing = new BounceEase();
+                break;
+            case "elastic":
+                easing = new ElasticEase();
+                break;
+            default:
+                easing = new SineEase();
+                break;
         }
 
         switch (mode) {
-            case "in":    easing.setEasingMode(EasingFunction.EASINGMODE_EASEIN);    break;
-            case "out":   easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);   break;
-            default:      easing.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);  break;
+            case "in":
+                easing.setEasingMode(EasingFunction.EASINGMODE_EASEIN);
+                break;
+            case "out":
+                easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
+                break;
+            default:
+                easing.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+                break;
         }
 
         return easing;
