@@ -1,8 +1,7 @@
 import { Color3, DirectionalLight, Engine, EventState, HemisphericLight, Light, Nullable, Observer, PointLight, Scene, SpotLight, Vector3 } from "@babylonjs/core";
 import { JsonRpcMimeType, McpAdapterBase, McpResourceContent, McpToolResult, McpToolResults } from "@dev/core";
-import { McpLightBehavior } from "../behaviours";
+import { IColor3, ILightPatch, ILightState, McpLightBehavior } from "@dev/behaviors";
 import { McpBabylonDomain, McpLightResourceUriPrefix } from "../mcp.commons";
-import { IColor3, ILightPatch, ILightState } from "../states";
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;

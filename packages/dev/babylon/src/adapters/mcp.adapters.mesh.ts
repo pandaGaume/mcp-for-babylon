@@ -22,9 +22,8 @@ import {
     Vector3,
 } from "@babylonjs/core";
 import { JsonRpcMimeType, McpAdapterBase, McpResourceContent, McpToolResult, McpToolResults } from "@dev/core";
-import { McpMeshBehavior } from "../behaviours";
+import { IMeshMaterialState, IMeshState, IMeshTransformState, McpMeshBehavior, MeshMaterialType } from "@dev/behaviors";
 import { McpBabylonDomain, McpMeshResourceUriPrefix } from "../mcp.commons";
-import { IMeshMaterialState, IMeshState, IMeshTransformState, MeshMaterialType } from "../states";
 
 const DEG_TO_RAD = Math.PI / 180;
 

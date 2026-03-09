@@ -10,7 +10,9 @@
     "files": [],
     "references": [
         { "path": "packages/dev/core/tsconfig.build.json" },
+        { "path": "packages/dev/behaviors/tsconfig.build.json" },
         { "path": "packages/dev/babylon/tsconfig.build.json" },
+        { "path": "packages/dev/cesium/tsconfig.build.json" },
         { "path": "packages/dev/tunnel/tsconfig.build.json" }
     ]
 }

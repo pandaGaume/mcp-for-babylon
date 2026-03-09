@@ -28,8 +28,6 @@ import {
     Vector3,
 } from "@babylonjs/core";
 import { JsonRpcMimeType, McpAdapterBase, McpResourceContent, McpToolResult, McpToolResults } from "@dev/core";
-import { McpCameraBehavior } from "../behaviours";
-import { McpBabylonDomain, McpCameraResourceUriPrefix } from "../mcp.commons";
 import {
     ICameraState,
     IFrustum,
@@ -39,10 +37,12 @@ import {
     IVisibleObjectMaterialState,
     IVisibleObjectState,
     MaterialType,
+    McpCameraBehavior,
     MeshShapeHint,
     VisibleObjectIncludeField,
     VisibleObjectSortBy,
-} from "../states";
+} from "@dev/behaviors";
+import { McpBabylonDomain, McpCameraResourceUriPrefix } from "../mcp.commons";
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;

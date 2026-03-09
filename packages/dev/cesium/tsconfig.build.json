@@ -5,10 +5,7 @@
         "composite": true,
         "outDir": "./dist",
         "rootDir": "./src",
-        "skipLibCheck": true,
-        "paths": {
-            "babylon/*": ["dev/babylon/src/*"]
-        }
+        "skipLibCheck": true
     },
 
     "references": [
