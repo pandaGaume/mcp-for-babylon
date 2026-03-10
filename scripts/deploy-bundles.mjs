@@ -8,6 +8,7 @@
  * Destination : packages/host/www/bundle/
  * Sources     : packages/dev/core/bundle/
  *               packages/dev/babylon/bundle/
+ *               packages/dev/cesium/bundle/
  *
  * Usage
  *   node scripts/deploy-bundles.mjs
@@ -27,6 +28,7 @@ const DEST = resolve(__root, "packages/host/www/bundle");
 const SOURCES = [
     resolve(__root, "packages/dev/core/bundle"),
     resolve(__root, "packages/dev/babylon/bundle"),
+    resolve(__root, "packages/dev/cesium/bundle"),
 ];
 
 // ── helpers ─────────────────────────────────────────────────────────────────

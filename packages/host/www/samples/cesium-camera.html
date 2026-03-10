@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>MCP Cesium — Template</title>
+        <link rel="stylesheet" href="css/sample.css" />
+        <!-- CesiumJS CSS (widgets, info box, etc.) -->
+        <link
+            rel="stylesheet"
+            href="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Widgets/widgets.css"
+        />
+        <style>
+            /* The Cesium viewer needs an explicit size inside the scene-panel. */
+            #cesiumContainer {
+                width: 100%;
+                height: 100%;
+            }
+            /* Hide the default Cesium credit logo — we keep attribution in code. */
+            .cesium-widget-credits {
+                display: none !important;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1 id="page-title">MCP Cesium — Template</h1>
+            <span id="status-badge" class="badge disconnected">Disconnected</span>
+        </header>
+
+        <div class="layout">
+            <!-- Left panel: connection -->
+            <aside class="left-panel panel">
+                <div class="panel-title">Cesium Ion</div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label for="cesium-token">Access token</label>
+                        <input type="text" id="cesium-token" value="" placeholder="eyJhbGci…" />
+                    </div>
+                    <div class="btn-row">
+                        <button id="load-scene-btn">&#9654; Load Scene</button>
+                    </div>
+                </div>
+
+                <div class="panel-title" style="margin-top: 12px">Connection</div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label for="ws-url">Tunnel provider base URL</label>
+                        <input type="text" id="ws-url" value="" />
+                    </div>
+                    <div class="field">
+                        <label for="server-name">Server name</label>
+                        <input type="text" id="server-name" value="" />
+                    </div>
+                    <div class="btn-row">
+                        <button id="start-btn" disabled>&#9654; Start</button>
+                        <button id="stop-btn" disabled>&#9632; Stop</button>
+                    </div>
+                    <div class="field" id="mcp-endpoint-field" style="display: none; margin-top: 14px">
+                        <label for="mcp-endpoint">MCP endpoint</label>
+                        <input type="text" id="mcp-endpoint" readonly style="color: var(--green); cursor: text" />
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right column -->
+            <div class="right-column">
+                <!-- Top: Cesium scene -->
+                <div class="scene-panel">
+                    <div id="cesiumContainer"></div>
+                </div>
+
+                <!-- Bottom: console -->
+                <section class="console-panel panel">
+                    <div class="panel-title">Console</div>
+                    <div class="panel-body" id="console-output"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- CesiumJS (CDN) -->
+        <script src="https://cesium.com/downloads/cesiumjs/releases/1.125/Build/Cesium/Cesium.js"></script>
+
+        <!-- MCP bundles — load order matters:
+             1. mcp-core.js    → window.McpCore    (shared interfaces, externalized by mcp-cesium)
+             2. mcp-server.js  → window.McpServer   (McpServerBuilder and protocol impl)
+             3. mcp-cesium.js  → window.McpCesium   (McpCameraAdapter, McpCameraBehavior, …) -->
+        <script src="/bundle/mcp-core.js"></script>
+        <script src="/bundle/mcp-server.js"></script>
+        <script src="/bundle/mcp-cesium.js"></script>
+
+        <script>
+            "use strict";
+
+            // =========================================================
+            // Page title & server name derived from the file name
+            // =========================================================
+            (function () {
+                var path = window.location.pathname;
+                var file = path.substring(path.lastIndexOf("/") + 1);
+                var name = file.split(".").slice(0, -1).join(".") || file;
+                document.getElementById("server-name").value = name;
+                document.getElementById("page-title").textContent = "MCP Cesium — " + name;
+                document.title = "MCP Cesium — " + name;
+
+                var wsScheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+                document.getElementById("ws-url").value = wsScheme + "//" + window.location.host + "/provider";
+            })();
+
+            // =========================================================
+            // Console helpers
+            // =========================================================
+            var consoleEl = document.getElementById("console-output");
+
+            function log(msg, level) {
+                level = level || "info";
+                var ts = new Date().toLocaleTimeString("en", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+                var div = document.createElement("div");
+                div.className = "log-line " + level;
+                div.innerHTML =
+                    '<span class="ts">' + ts + "</span>  " + '<span class="msg">' + escHtml(msg) + "</span>";
+                consoleEl.appendChild(div);
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+
+            function escHtml(s) {
+                return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            }
+
+            // =========================================================
+            // Status badge
+            // =========================================================
+            var badgeEl = document.getElementById("status-badge");
+
+            function setStatus(state) {
+                badgeEl.className = "badge " + state;
+                badgeEl.textContent =
+                    {
+                        disconnected: "Disconnected",
+                        connecting: "Connecting\u2026",
+                        connected: "Connected",
+                    }[state] || state;
+            }
+
+            // =========================================================
+            // CesiumJS Viewer + scene
+            // =========================================================
+
+            // Viewer is created when the user clicks "Load Scene" after
+            // entering their Cesium Ion access token.
+            var viewer = null;
+
+            // Persist token in localStorage so it survives page reloads.
+            var STORAGE_KEY = "cesium-ion-token";
+            (function () {
+                var saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) document.getElementById("cesium-token").value = saved;
+            })();
+
+            /**
+             * Initialise the CesiumJS viewer with Google 3D Tiles
+             * and populate the scene with 12 clock-face boxes.
+             */
+            async function initViewer(token) {
+                Cesium.Ion.defaultAccessToken = token;
+
+                viewer = new Cesium.Viewer("cesiumContainer", {
+                    globe: false,
+                    skyAtmosphere: new Cesium.SkyAtmosphere(),
+                    sceneModePicker: false,
+                    baseLayerPicker: false,
+                    geocoder: Cesium.IonGeocodeProviderType.GOOGLE,
+                    animation: false,
+                    timeline: false,
+                    homeButton: false,
+                    navigationHelpButton: false,
+                    fullscreenButton: false,
+                    infoBox: false,
+                    selectionIndicator: false,
+                });
+
+                // Load Google Photorealistic 3D Tiles
+                try {
+                    var tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+                    viewer.scene.primitives.add(tileset);
+                    log("Google 3D Tiles loaded.", "ok");
+                } catch (err) {
+                    log("Failed to load 3D Tiles: " + err, "error");
+                }
+
+                createScene();
+
+                // Enable the MCP Start button now that the viewer exists.
+                document.getElementById("start-btn").disabled = false;
+                document.getElementById("load-scene-btn").disabled = true;
+                document.getElementById("cesium-token").disabled = true;
+            }
+
+            /**
+             * Populate the CesiumJS scene with 12 clock-face boxes.
+             *
+             * Centre: Champs de Mars, Paris (48.856 N, 2.298 E).
+             * Clock radius: ~200 m.  Box size: 20 m.
+             */
+            function createScene() {
+                var CENTER_LON = 2.298;
+                var CENTER_LAT = 48.856;
+                var CENTER_HEIGHT = 100; // above Paris ground level (ellipsoid height ~80 m in this area)
+                var CLOCK_RADIUS_M = 200; // metres
+                var BOX_SIZE = 20; // metres
+
+                // 12 visually distinct colors — same palette as the Babylon sample.
+                var COLORS = [
+                    Cesium.Color.fromCssColorString("#FF3333"), //  0  noon    — red
+                    Cesium.Color.fromCssColorString("#FF801A"), //  1          — orange
+                    Cesium.Color.fromCssColorString("#FFD91A"), //  2          — amber
+                    Cesium.Color.fromCssColorString("#8CE61A"), //  3          — yellow-green
+                    Cesium.Color.fromCssColorString("#1ACC33"), //  4          — green
+                    Cesium.Color.fromCssColorString("#1AE6B3"), //  5          — teal
+                    Cesium.Color.fromCssColorString("#1AA6FF"), //  6          — sky-blue
+                    Cesium.Color.fromCssColorString("#1A4DFF"), //  7          — blue
+                    Cesium.Color.fromCssColorString("#801AFF"), //  8          — violet
+                    Cesium.Color.fromCssColorString("#D91AFF"), //  9          — purple
+                    Cesium.Color.fromCssColorString("#FF1AB3"), // 10          — magenta
+                    Cesium.Color.fromCssColorString("#FF1A66"), // 11          — rose
+                ];
+
+                // Approximate conversion: 1 degree latitude ~ 111 320 m.
+                // 1 degree longitude ~ 111 320 * cos(lat) m.
+                var mPerDegLat = 111320;
+                var mPerDegLon = 111320 * Math.cos(Cesium.Math.toRadians(CENTER_LAT));
+
+                for (var h = 0; h < 12; h++) {
+                    // Clock angle: 0 = noon (north), clockwise.
+                    // In geographic terms: noon is +lat (north), 3 o'clock is +lon (east).
+                    var angle = (h / 12) * 2 * Math.PI;
+                    var dNorth = CLOCK_RADIUS_M * Math.cos(angle); // positive = north
+                    var dEast = CLOCK_RADIUS_M * Math.sin(angle); // positive = east
+
+                    var lon = CENTER_LON + dEast / mPerDegLon;
+                    var lat = CENTER_LAT + dNorth / mPerDegLat;
+
+                    viewer.entities.add({
+                        name: String(h),
+                        position: Cesium.Cartesian3.fromDegrees(lon, lat, CENTER_HEIGHT + BOX_SIZE / 2),
+                        box: {
+                            dimensions: new Cesium.Cartesian3(BOX_SIZE, BOX_SIZE, BOX_SIZE),
+                            material: COLORS[h],
+                        },
+                    });
+
+                    log(
+                        'Box "' +
+                            h +
+                            '" at (' +
+                            lat.toFixed(5) +
+                            ", " +
+                            lon.toFixed(5) +
+                            ") — " +
+                            COLORS[h].toCssColorString(),
+                        "dim"
+                    );
+                }
+
+                // Fly the camera to an overview position above the clock face.
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(CENTER_LON - 0.003, CENTER_LAT - 0.002, 800),
+                    orientation: {
+                        heading: Cesium.Math.toRadians(45),
+                        pitch: Cesium.Math.toRadians(-45),
+                        roll: 0,
+                    },
+                    duration: 0, // teleport, no animation
+                });
+
+                log(
+                    "Scene: 12 boxes in clock-face layout centred on Champs de Mars, Paris (" +
+                        CENTER_LAT +
+                        " N, " +
+                        CENTER_LON +
+                        " E). Radius " +
+                        CLOCK_RADIUS_M +
+                        " m.",
+                    "ok"
+                );
+            }
+
+            // =========================================================
+            // Load Scene button
+            // =========================================================
+            document.getElementById("load-scene-btn").addEventListener("click", function () {
+                var token = document.getElementById("cesium-token").value.trim();
+                if (!token) {
+                    log("Please enter your Cesium Ion access token.", "error");
+                    return;
+                }
+                localStorage.setItem(STORAGE_KEY, token);
+                log("Initialising CesiumJS viewer\u2026", "dim");
+                initViewer(token);
+            });
+
+            // =========================================================
+            // MCP server lifecycle
+            // =========================================================
+            var McpServerBuilder = window.McpServer.McpServerBuilder;
+            var McpCameraAdapter = window.McpCesium.McpCameraAdapter;
+            var McpCameraBehavior = window.McpCesium.McpCameraBehavior;
+            var mcpServer = null;
+
+            /**
+             * Creates and returns the MCP behavior(s) for this scene.
+             */
+            function createBehaviour() {
+                var cam_adapter = new McpCameraAdapter(viewer);
+                var cam_behavior = new McpCameraBehavior(cam_adapter);
+                return cam_behavior;
+            }
+
+            document.getElementById("start-btn").addEventListener("click", async function () {
+                var providerBase = document.getElementById("ws-url").value.trim().replace(/\/$/, "");
+                var name = document.getElementById("server-name").value.trim() || "cesium-template";
+
+                var wsUrl = providerBase + "/" + encodeURIComponent(name);
+                var httpBase = wsUrl.replace(/^ws(s?):\/\//, "http$1://").replace(/\/provider\//, "/");
+                var mcpHttpUrl = httpBase.endsWith("/mcp") ? httpBase : httpBase + "/mcp";
+
+                log("Connecting to " + wsUrl + " \u2026", "dim");
+                setStatus("connecting");
+
+                var builder = new McpServerBuilder()
+                    .withWsUrl(wsUrl)
+                    .withName(name)
+                    .withInitializer({
+                        initialize: function (_clientInfo, _caps) {
+                            return {
+                                protocolVersion: "2024-11-05",
+                                serverInfo: { name: name, version: "0.0.0" },
+                                instructions:
+                                    "You are connected to a LIVE 3D CesiumJS globe scene focused on camera control. " +
+                                    "ALWAYS use MCP tools and resources \u2014 do NOT write or suggest any code. " +
+                                    "\n\nSCENE LAYOUT: " +
+                                    "A clock face of 12 coloured boxes (named '0' to '11') arranged in a circle of radius 200 m " +
+                                    "centred on the Champs de Mars, Paris (48.856\u00b0N, 2.298\u00b0E). " +
+                                    "Box '0' is at noon (north), '3' at 3 o\u2019clock (east), '6' at 6 o\u2019clock (south), '9' at 9 o\u2019clock (west). " +
+                                    "Each box is 20 m on a side, resting on the ground. " +
+                                    "\n\nCOORDINATE SYSTEM: " +
+                                    "CesiumJS uses Earth-Centered Earth-Fixed (ECEF) coordinates \u2014 right-handed, units in metres. " +
+                                    "Position {x, y, z} is in ECEF. Use Cesium.Cartesian3.fromDegrees() for geographic \u2192 ECEF conversion. " +
+                                    "\n\nCAMERA RESOURCES: " +
+                                    "Read 'cesium://camera' to list all cameras (CesiumJS has a single camera). " +
+                                    "Read 'cesium://camera/default' to get the full state (position, direction, up, FOV, projection, etc.)." +
+                                    "\n\nTOOL ROUTING: " +
+                                    "Every camera tool requires the 'uri' argument set to 'cesium://camera/default'. " +
+                                    "Always read 'cesium://camera' first to confirm the URI before calling any tool." +
+                                    "\n\nAVAILABLE OPERATIONS (non-exhaustive): " +
+                                    "camera_set_position / camera_set_target / camera_look_at \u2014 teleport and aim. " +
+                                    "camera_orbit \u2014 rotate around the current look-at target. " +
+                                    "camera_dolly \u2014 move toward or away from the target. " +
+                                    "camera_pan \u2014 slide camera and target together. " +
+                                    "camera_set_fov / camera_zoom / camera_set_projection \u2014 optics. " +
+                                    "camera_animate_to / camera_animate_orbit / camera_follow_path / camera_shake \u2014 animated moves. " +
+                                    "camera_stop_animation \u2014 stop any running animation. " +
+                                    "camera_lock / camera_unlock \u2014 detach or restore interactive control. " +
+                                    "camera_snapshot \u2014 capture a base64 PNG." +
+                                    "\n\nINITIAL CAMERA: " +
+                                    "Positioned northwest of the clock face at ~800 m altitude, looking southeast at 45\u00b0 pitch.",
+                            };
+                        },
+                    });
+
+                var behaviours = createBehaviour();
+                if (behaviours) {
+                    if (Array.isArray(behaviours)) {
+                        builder.register.apply(builder, behaviours);
+                    } else {
+                        builder.register(behaviours);
+                    }
+                }
+                mcpServer = builder.build();
+
+                try {
+                    await mcpServer.start();
+                    setStatus("connected");
+                    log('Connected as provider \u2014 "' + name + '"', "ok");
+                    log("MCP Inspector \u2192 " + mcpHttpUrl, "ok");
+                    log("Waiting for MCP client\u2026", "dim");
+
+                    document.getElementById("start-btn").disabled = true;
+                    document.getElementById("stop-btn").disabled = false;
+                    document.getElementById("mcp-endpoint").value = mcpHttpUrl;
+                    document.getElementById("mcp-endpoint-field").style.display = "";
+                } catch (err) {
+                    setStatus("disconnected");
+                    log("Failed to connect: " + err, "error");
+                    mcpServer = null;
+                }
+            });
+
+            document.getElementById("stop-btn").addEventListener("click", async function () {
+                if (!mcpServer) return;
+                try {
+                    await mcpServer.stop();
+                    log("Server stopped.", "warn");
+                } catch (err) {
+                    log("Stop error: " + err, "error");
+                } finally {
+                    mcpServer = null;
+                    setStatus("disconnected");
+                    document.getElementById("start-btn").disabled = false;
+                    document.getElementById("stop-btn").disabled = true;
+                    document.getElementById("mcp-endpoint-field").style.display = "none";
+                    document.getElementById("mcp-endpoint").value = "";
+                }
+            });
+
+            log("Ready. Press \u25b6 Start to connect as an MCP provider.", "dim");
+        </script>
+    </body>
+</html>
