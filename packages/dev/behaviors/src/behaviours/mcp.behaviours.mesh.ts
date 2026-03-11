@@ -109,14 +109,17 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetEnabledFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetEnabledFn,
+                    undefined,
                     "Enables or disables a mesh. A disabled mesh is not rendered, not pickable and " +
-                    "propagates the disabled state to its children.",
+                        "propagates the disabled state to its children."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI, e.g. babylon://mesh/meshId" },
-                        enabled: { type: "boolean", description: "True to enable, false to disable." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetEnabledFn, "uri", undefined, "Mesh URI, e.g. babylon://mesh/meshId") },
+                        enabled: { type: "boolean", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetEnabledFn, "enabled", undefined, "True to enable, false to disable.") },
                     },
                     required: ["uri", "enabled"],
                     additionalProperties: false,
@@ -128,14 +131,17 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetVisibleFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetVisibleFn,
+                    undefined,
                     "Shows or hides a mesh without affecting its children or pickability. " +
-                    "Prefer this over mesh_set_enabled for simple show/hide operations.",
+                        "Prefer this over mesh_set_enabled for simple show/hide operations."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        visible: { type: "boolean", description: "True to show, false to hide." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetVisibleFn, "uri", undefined, "Mesh URI") },
+                        visible: { type: "boolean", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetVisibleFn, "visible", undefined, "True to show, false to hide.") },
                     },
                     required: ["uri", "visible"],
                     additionalProperties: false,
@@ -147,12 +153,16 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetVisibilityFn,
-                description: "Sets the per-mesh alpha. 0 = fully transparent, 1 = fully opaque. " + "Independent of the material alpha.",
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetVisibilityFn,
+                    undefined,
+                    "Sets the per-mesh alpha. 0 = fully transparent, 1 = fully opaque. " + "Independent of the material alpha."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        visibility: { type: "number", description: "Alpha value in [0..1]." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetVisibilityFn, "uri", undefined, "Mesh URI") },
+                        visibility: { type: "number", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetVisibilityFn, "visibility", undefined, "Alpha value in [0..1].") },
                     },
                     required: ["uri", "visibility"],
                     additionalProperties: false,
@@ -164,12 +174,12 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetPositionFn,
-                description: "Teleports the mesh to an absolute world-space position (right-handed y-up).",
+                description: this._buildToolDescription(McpMeshBehavior.MeshSetPositionFn, undefined, "Teleports the mesh to an absolute world-space position (right-handed y-up)."),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        position: { ...vec3, description: "Target world-space position (right-handed y-up)." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetPositionFn, "uri", undefined, "Mesh URI") },
+                        position: { ...vec3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetPositionFn, "position", undefined, "Target world-space position (right-handed y-up).") },
                     },
                     required: ["uri", "position"],
                     additionalProperties: false,
@@ -181,17 +191,20 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetRotationFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetRotationFn,
+                    undefined,
                     "Sets the local Euler rotation of a mesh in degrees (right-handed y-up). " +
-                    "x = pitch (tilt forward/back), y = yaw (turn left/right), z = roll (lean sideways). " +
-                    "Clears any existing rotationQuaternion.",
+                        "x = pitch (tilt forward/back), y = yaw (turn left/right), z = roll (lean sideways). " +
+                        "Clears any existing rotationQuaternion."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetRotationFn, "uri", undefined, "Mesh URI") },
                         rotation: {
                             ...vec3,
-                            description: "Euler angles in degrees (right-handed y-up). x=pitch, y=yaw, z=roll.",
+                            description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetRotationFn, "rotation", undefined, "Euler angles in degrees (right-handed y-up). x=pitch, y=yaw, z=roll."),
                         },
                     },
                     required: ["uri", "rotation"],
@@ -204,14 +217,17 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetScalingFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetScalingFn,
+                    undefined,
                     "Sets the local scale of a mesh. Use (1,1,1) to reset to original size. " +
-                    "Negative values mirror the mesh along that axis.",
+                        "Negative values mirror the mesh along that axis."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        scaling: { ...vec3, description: "Scale factors along each local axis." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetScalingFn, "uri", undefined, "Mesh URI") },
+                        scaling: { ...vec3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetScalingFn, "scaling", undefined, "Scale factors along each local axis.") },
                     },
                     required: ["uri", "scaling"],
                     additionalProperties: false,
@@ -223,19 +239,22 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshAnimateToFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshAnimateToFn,
+                    undefined,
                     "Smoothly animates a mesh toward target position, rotation and/or scaling values. " +
-                    "Only the provided fields are animated; omitted fields remain unchanged. " +
-                    "Rotation is specified in degrees (Euler, right-handed y-up).",
+                        "Only the provided fields are animated; omitted fields remain unchanged. " +
+                        "Rotation is specified in degrees (Euler, right-handed y-up)."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        position: { ...vec3, description: "Target world-space position (right-handed y-up)." },
-                        rotation: { ...vec3, description: "Target Euler rotation in degrees (right-handed y-up)." },
-                        scaling: { ...vec3, description: "Target local scale factors." },
-                        duration: { type: "number", description: "Animation duration in seconds. Defaults to 1." },
-                        easing: easingParam,
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "uri", undefined, "Mesh URI") },
+                        position: { ...vec3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "position", undefined, "Target world-space position (right-handed y-up).") },
+                        rotation: { ...vec3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "rotation", undefined, "Target Euler rotation in degrees (right-handed y-up).") },
+                        scaling: { ...vec3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "scaling", undefined, "Target local scale factors.") },
+                        duration: { type: "number", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "duration", undefined, "Animation duration in seconds. Defaults to 1.") },
+                        easing: { ...easingParam, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshAnimateToFn, "easing", undefined, easingParam.description as string) },
                     },
                     required: ["uri"],
                     additionalProperties: false,
@@ -247,15 +266,18 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetColorFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetColorFn,
+                    undefined,
                     "Sets the base color of the mesh's material (diffuse for StandardMaterial, albedo for PBRMaterial). " +
-                    "If the mesh has no material a new StandardMaterial is created. " +
-                    "Color channels are in [0..1].",
+                        "If the mesh has no material a new StandardMaterial is created. " +
+                        "Color channels are in [0..1]."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        color: { ...color3, description: "Target base color (r, g, b in 0..1)." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetColorFn, "uri", undefined, "Mesh URI") },
+                        color: { ...color3, description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetColorFn, "color", undefined, "Target base color (r, g, b in 0..1).") },
                     },
                     required: ["uri", "color"],
                     additionalProperties: false,
@@ -267,15 +289,18 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshSetMaterialAlphaFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshSetMaterialAlphaFn,
+                    undefined,
                     "Sets the alpha of the mesh's material (0 = fully transparent, 1 = fully opaque). " +
-                    "This is distinct from the per-mesh visibility alpha. " +
-                    "If the mesh has no material a new StandardMaterial is created.",
+                        "This is distinct from the per-mesh visibility alpha. " +
+                        "If the mesh has no material a new StandardMaterial is created."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        alpha: { type: "number", description: "Alpha value in [0..1]." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetMaterialAlphaFn, "uri", undefined, "Mesh URI") },
+                        alpha: { type: "number", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshSetMaterialAlphaFn, "alpha", undefined, "Alpha value in [0..1].") },
                     },
                     required: ["uri", "alpha"],
                     additionalProperties: false,
@@ -287,14 +312,17 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshTagAddFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshTagAddFn,
+                    undefined,
                     "Adds one or more Babylon.js tags to a mesh. Tags are space-separated identifiers " +
-                    "that can later be queried with mesh_find_by_tag using boolean expressions (&&, ||, !).",
+                        "that can later be queried with mesh_find_by_tag using boolean expressions (&&, ||, !)."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        tags: { type: "string", description: "Space-separated list of tags to add, e.g. 'enemy destructible'." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagAddFn, "uri", undefined, "Mesh URI") },
+                        tags: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagAddFn, "tags", undefined, "Space-separated list of tags to add, e.g. 'enemy destructible'.") },
                     },
                     required: ["uri", "tags"],
                     additionalProperties: false,
@@ -306,12 +334,12 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshTagRemoveFn,
-                description: "Removes one or more Babylon.js tags from a mesh.",
+                description: this._buildToolDescription(McpMeshBehavior.MeshTagRemoveFn, undefined, "Removes one or more Babylon.js tags from a mesh."),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        tags: { type: "string", description: "Space-separated list of tags to remove." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagRemoveFn, "uri", undefined, "Mesh URI") },
+                        tags: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagRemoveFn, "tags", undefined, "Space-separated list of tags to remove.") },
                     },
                     required: ["uri", "tags"],
                     additionalProperties: false,
@@ -323,12 +351,12 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshTagSetFn,
-                description: "Replaces ALL existing tags on a mesh with the provided set. Pass an empty string to clear all tags.",
+                description: this._buildToolDescription(McpMeshBehavior.MeshTagSetFn, undefined, "Replaces ALL existing tags on a mesh with the provided set. Pass an empty string to clear all tags."),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Mesh URI" },
-                        tags: { type: "string", description: "Space-separated list of new tags (replaces existing). Empty string clears all." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagSetFn, "uri", undefined, "Mesh URI") },
+                        tags: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshTagSetFn, "tags", undefined, "Space-separated list of new tags (replaces existing). Empty string clears all.") },
                     },
                     required: ["uri", "tags"],
                     additionalProperties: false,
@@ -340,18 +368,21 @@ export class McpMeshBehavior extends McpBehavior {
             // -----------------------------------------------------------------
             {
                 name: McpMeshBehavior.MeshFindByTagFn,
-                description:
+                description: this._buildToolDescription(
+                    McpMeshBehavior.MeshFindByTagFn,
+                    undefined,
                     "Finds all meshes in the scene matching a Babylon.js tag query expression. " +
-                    "Supports boolean operators: '&&' (AND), '||' (OR), '!' (NOT). " +
-                    "Examples: 'enemy', 'enemy && destructible', 'enemy || ally', '!static'. " +
-                    "Pass uri as 'babylon://mesh' (the mesh list resource).",
+                        "Supports boolean operators: '&&' (AND), '||' (OR), '!' (NOT). " +
+                        "Examples: 'enemy', 'enemy && destructible', 'enemy || ally', '!static'. " +
+                        "Pass uri as 'babylon://mesh' (the mesh list resource)."
+                ),
                 inputSchema: {
                     type: "object",
                     properties: {
-                        uri: { type: "string", description: "Must be 'babylon://mesh' (namespace-level tool)." },
+                        uri: { type: "string", description: this._buildToolPropertyDescription(McpMeshBehavior.MeshFindByTagFn, "uri", undefined, "Must be 'babylon://mesh' (namespace-level tool).") },
                         query: {
                             type: "string",
-                            description: "Babylon.js tag query expression, e.g. 'enemy && destructible'.",
+                            description: this._buildToolPropertyDescription(McpMeshBehavior.MeshFindByTagFn, "query", undefined, "Babylon.js tag query expression, e.g. 'enemy && destructible'."),
                         },
                     },
                     required: ["uri", "query"],

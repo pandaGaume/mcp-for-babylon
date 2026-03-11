@@ -49,6 +49,23 @@ export class McpLightAdapter extends McpAdapterBase {
     private _indexedLights = new Map<string, Light>();
     private _observers: Nullable<Observer<Light>>[] = [];
 
+    // ── Description overrides ────────────────────────────────────────────
+
+    public override getToolPropertyDescription(_toolName: string, propertyName: string, _resourceType?: string): string | undefined {
+        switch (propertyName) {
+            case "position":
+            case "patch.position":
+                return "World-space position {x, y, z} in right-handed y-up coordinate system.";
+            case "direction":
+            case "patch.direction":
+                return "Direction vector {x, y, z} in right-handed y-up coordinate system. Will be normalised.";
+            case "target":
+                return "World-space point {x, y, z} to aim the light at (right-handed y-up).";
+            default:
+                return undefined;
+        }
+    }
+
     /**
      * URIs of lights created through `light_create`.
      * Only these may be disposed via `light_remove`; pre-existing scene lights are protected.

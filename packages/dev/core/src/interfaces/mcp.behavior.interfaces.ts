@@ -121,6 +121,38 @@ export interface IMcpBehaviorAdapter extends IMcpRuntimeOperations {
      *          {@link ToolSupport.Full} (backwards-compatible default).
      */
     getToolSupport?(toolName: string, resourceType?: string): ToolSupport | undefined;
+
+    /**
+     * Returns an adapter-specific description for a tool, optionally scoped
+     * to a resource type.
+     *
+     * The behavior calls this while building tool schemas so that adapters
+     * can inject engine-specific language into the tool-level description.
+     *
+     * @param toolName     The tool name, e.g. `"camera_set_target"`.
+     * @param resourceType Optional resource type string chosen by the adapter.
+     * @returns A replacement description string, or `undefined` to keep the
+     *          default description provided by the behavior.
+     */
+    getToolDescription?(toolName: string, resourceType?: string): string | undefined;
+
+    /**
+     * Returns an adapter-specific description for a tool property, optionally
+     * scoped to a resource type.
+     *
+     * The behavior calls this while building tool schemas so that adapters
+     * can inject engine-specific language (e.g. "ECEF metres" for Cesium,
+     * "right-handed y-up" for Babylon) into individual JSON-Schema property
+     * descriptions.
+     *
+     * @param toolName      The tool name, e.g. `"camera_set_target"`.
+     * @param propertyName  Dot-notation path into the inputSchema properties,
+     *                      e.g. `"target"`, `"position"`, `"patch.intensity"`.
+     * @param resourceType  Optional resource type string chosen by the adapter.
+     * @returns A replacement description string, or `undefined` to keep the
+     *          default description provided by the behavior.
+     */
+    getToolPropertyDescription?(toolName: string, propertyName: string, resourceType?: string): string | undefined;
 }
 
 /**

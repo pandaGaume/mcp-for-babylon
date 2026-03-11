@@ -49,8 +49,30 @@ export abstract class McpAdapterBase implements IMcpBehaviorAdapter {
      * The default implementation returns `undefined` for every tool, which the
      * behavior interprets as {@link ToolSupport.Full} (all tools assumed fully supported).
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public getToolSupport(_toolName: string, _resourceType?: string): ToolSupport | undefined {
+        return undefined;
+    }
+
+    /**
+     * Returns an adapter-specific description for a tool.
+     *
+     * Override in subclasses to inject engine-specific language into
+     * tool-level descriptions. The default returns `undefined` for every
+     * tool, which the behavior interprets as "use the default description".
+     */
+    getToolDescription?(_toolName: string, _resourceType?: string): string | undefined {
+        return undefined;
+    }
+
+    /**
+     * Returns an adapter-specific description for a tool property.
+     *
+     * Override in subclasses to inject engine-specific coordinate grammar
+     * into individual tool property descriptions. The default returns
+     * `undefined` for every property, which the behavior interprets as
+     * "use the default description".
+     */
+    getToolPropertyDescription?(_toolName: string, _propertyName: string, _resourceType?: string): string | undefined {
         return undefined;
     }
 

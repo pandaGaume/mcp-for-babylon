@@ -105,4 +105,22 @@ export abstract class McpBehavior extends McpBehaviorBase {
     protected _buildTools(): McpTool[] {
         return [];
     }
+
+    protected _buildToolDescription(toolName: string, resourceType: string | undefined, defaultDescription: string): string {
+        const descStr = this.adapter.getToolDescription ? this.adapter.getToolDescription(toolName) : undefined;
+        return descStr ?? defaultDescription;
+    }
+
+    /**
+     * Resolves the description for a single property inside a tool's inputSchema.
+     *
+     * Mirrors {@link _buildToolDescription} but at the property level.
+     * The adapter's `getToolPropertyDescription()` is queried first; if it
+     * returns a string that replaces the default. If it returns `undefined`
+     * (or is not implemented), the caller-supplied `defaultDescription` is used.
+     */
+    protected _buildToolPropertyDescription(toolName: string, propertyName: string, resourceType: string | undefined, defaultDescription: string): string {
+        const descStr = this.adapter.getToolPropertyDescription ? this.adapter.getToolPropertyDescription(toolName, propertyName) : undefined;
+        return descStr ?? defaultDescription;
+    }
 }

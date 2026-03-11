@@ -887,6 +887,58 @@ export class McpCameraAdapter extends McpAdapterBase {
         return this._geodeticSystem;
     }
 
+    // -------------------------------------------------------------------------
+    // Description overrides — inject coordinate-system grammar into tool schemas
+    // -------------------------------------------------------------------------
+
+    private get _coordHint(): string {
+        return this._geodeticSystem
+            ? "Accepts Cartesian {x,y,z} (right-handed y-up) or geographic {lat,lon,alt?} (WGS84 degrees)."
+            : "Cartesian {x,y,z} in right-handed y-up coordinate system.";
+    }
+
+    /** Camera tools that accept coordinate inputs (position / target). */
+    private static readonly _COORD_TOOLS = new Set([
+        McpCameraBehavior.CameraSetTargetFn,
+        McpCameraBehavior.CameraSetPositionFn,
+        McpCameraBehavior.CameraLookAtFn,
+        McpCameraBehavior.CameraAnimateToFn,
+        McpCameraBehavior.CameraFollowPathFn,
+    ]);
+
+    public override getToolDescription(toolName: string, _resourceType?: string): string | undefined {
+        const hint = this._coordHint;
+        switch (toolName) {
+            case McpCameraBehavior.CameraSetTargetFn:
+                return `Sets the camera look-at point by calling TargetCamera.setTarget(). ${hint}`;
+            case McpCameraBehavior.CameraSetPositionFn:
+                return `Teleports the camera to an absolute world-space position. ${hint} For ArcRotateCamera this recalculates alpha, beta and radius automatically.`;
+            case McpCameraBehavior.CameraLookAtFn:
+                return `Moves the camera to a world-space position AND sets its look-at target in a single call. ${hint} The ideal 'place the camera here and frame that subject' director operation.`;
+            case McpCameraBehavior.CameraAnimateToFn:
+                return `Smoothly animates the camera to a new position, look-at target and/or FOV over the given duration. ${hint} All specified properties are interpolated simultaneously. Properties that are omitted remain unchanged.`;
+            case McpCameraBehavior.CameraFollowPathFn:
+                return `Moves the camera through an ordered sequence of world-space waypoints over the given duration. ${hint} Position and look-at target are linearly interpolated between adjacent waypoints. If a waypoint omits position or target, that value carries forward from the previous waypoint.`;
+            default:
+                return undefined;
+        }
+    }
+
+    public override getToolPropertyDescription(toolName: string, propertyName: string, _resourceType?: string): string | undefined {
+        if (McpCameraAdapter._COORD_TOOLS.has(toolName)) {
+            const hint = this._coordHint;
+            switch (propertyName) {
+                case "position":
+                case "waypoints.position":
+                    return `Camera position. ${hint}`;
+                case "target":
+                case "waypoints.target":
+                    return `Look-at point. ${hint}`;
+            }
+        }
+        return undefined;
+    }
+
     /**
      * Converts a right-handed y-up input vector to a Babylon.js internal Vector3.
      * When the scene uses the default left-handed system, Z is negated.

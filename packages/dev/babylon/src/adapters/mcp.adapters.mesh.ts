@@ -64,6 +64,19 @@ export class McpMeshAdapter extends McpAdapterBase {
     private _observers: Nullable<Observer<AbstractMesh>>[] = [];
     private _activeAnimations = new Map<string, Observer<Scene>>();
 
+    // ── Description overrides ────────────────────────────────────────────
+
+    public override getToolPropertyDescription(_toolName: string, propertyName: string, _resourceType?: string): string | undefined {
+        switch (propertyName) {
+            case "position":
+                return "World-space position {x, y, z} in right-handed y-up coordinate system.";
+            case "rotation":
+                return "Euler angles in degrees {x, y, z} (right-handed y-up). x=pitch, y=yaw, z=roll.";
+            default:
+                return undefined;
+        }
+    }
+
     public constructor(scene?: Scene) {
         super(McpBabylonDomain);
         this._scene = scene ?? Engine.LastCreatedScene!;
