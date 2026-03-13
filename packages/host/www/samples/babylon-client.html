@@ -1,0 +1,1449 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>MCP Babylon — Client Loopback</title>
+        <link rel="stylesheet" href="css/sample.css" />
+        <style>
+            /* ── Viewport divider ──────────────────────────────────── */
+            .viewport-borders {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 1;
+            }
+            .viewport-borders .vb-v {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 50%;
+                width: 1px;
+                background: var(--muted);
+            }
+
+            /* ── Viewport labels ───────────────────────────────────── */
+            .viewport-labels {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 1;
+            }
+            .viewport-label {
+                position: absolute;
+                font-family: var(--mono);
+                font-size: 0.7rem;
+                font-weight: 700;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--text);
+                background: rgba(30, 30, 46, 0.7);
+                padding: 3px 10px;
+                border-radius: 0 0 6px 0;
+            }
+            .viewport-label.right {
+                border-radius: 0 0 0 6px;
+            }
+
+            /* ── 3D overlay container ──────────────────────────────── */
+            #overlay-container {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 2;
+            }
+
+            /* ── Connection icon (floating above rover) ────────────── */
+            .connection-icon {
+                position: absolute;
+                pointer-events: auto;
+                width: 30px;
+                height: 30px;
+                margin-left: -15px;
+                margin-top: -15px;
+                border-radius: 50%;
+                background: var(--surface);
+                border: 2px solid var(--border);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                cursor: pointer;
+                transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+                user-select: none;
+            }
+            .connection-icon:hover {
+                border-color: var(--accent);
+                box-shadow: 0 0 10px var(--accent);
+                transform: scale(1.15);
+            }
+            .connection-icon.connected {
+                border-color: var(--green);
+                box-shadow: 0 0 8px var(--green);
+            }
+
+            /* ── Connection dropdown ───────────────────────────────── */
+            .connection-dropdown {
+                position: absolute;
+                top: 36px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 4px 0;
+                min-width: 140px;
+                z-index: 10;
+                pointer-events: auto;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            }
+            .connection-dropdown .dd-item {
+                display: block;
+                width: 100%;
+                padding: 6px 14px;
+                background: none;
+                border: none;
+                color: var(--text);
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                text-align: left;
+                cursor: pointer;
+            }
+            .connection-dropdown .dd-item:hover {
+                background: var(--border);
+            }
+            .connection-dropdown .dd-item.disconnect {
+                color: var(--red);
+            }
+
+            /* ── Rover cards in left panel ─────────────────────────── */
+            .rover-card {
+                padding: 8px 10px;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                margin-bottom: 8px;
+            }
+            .rover-card-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 6px;
+            }
+            .rover-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+            .rover-card-name {
+                font-family: var(--mono);
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: var(--text);
+            }
+            .rover-card-status {
+                font-family: var(--mono);
+                font-size: 0.68rem;
+                color: var(--muted);
+                margin-bottom: 6px;
+            }
+            .rover-card-status.ok {
+                color: var(--green);
+            }
+            .rover-card button {
+                font-size: 0.72rem;
+                padding: 3px 10px;
+            }
+
+            /* ── Tool panel (floating modal) ───────────────────────── */
+            .tool-panel {
+                position: fixed;
+                z-index: 100;
+                width: 700px;
+                height: 500px;
+                min-width: 400px;
+                min-height: 200px;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                overflow: hidden;
+                resize: both;
+            }
+            .tool-panel-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 14px;
+                background: var(--surface);
+                cursor: grab;
+                user-select: none;
+                border-bottom: 1px solid var(--border);
+            }
+            .tool-panel-header:active {
+                cursor: grabbing;
+            }
+            .tool-panel-title {
+                font-family: var(--mono);
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: var(--accent);
+            }
+            .tool-panel-close {
+                background: none;
+                border: none;
+                color: var(--muted);
+                font-size: 1rem;
+                cursor: pointer;
+                padding: 2px 6px;
+            }
+            .tool-panel-close:hover {
+                color: var(--red);
+            }
+            .tool-panel-body {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+                min-height: 0;
+            }
+            .tool-panel-left {
+                width: 240px;
+                min-width: 240px;
+                overflow-y: auto;
+                padding: 10px 12px;
+                border-right: 1px solid var(--border);
+            }
+            .tool-panel-right {
+                flex: 1;
+                overflow-y: auto;
+                padding: 10px 14px;
+            }
+            .tool-panel-section {
+                margin-bottom: 12px;
+            }
+            .tool-panel-section-title {
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                font-weight: 700;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                margin-bottom: 6px;
+            }
+
+            /* Resource items */
+            .resource-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                color: var(--text);
+            }
+            .resource-item:hover {
+                background: var(--surface);
+            }
+            .resource-item .res-uri {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                flex: 1;
+                margin-right: 8px;
+            }
+            .resource-item .res-read-btn {
+                font-size: 0.66rem;
+                padding: 2px 8px;
+                flex-shrink: 0;
+            }
+            .resource-content {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 6px 8px;
+                margin: 4px 0 8px 0;
+                font-family: var(--mono);
+                font-size: 0.66rem;
+                color: var(--text);
+                max-height: 120px;
+                overflow-y: auto;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+
+            /* Tool items */
+            .tool-item {
+                padding: 6px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+            .tool-item:hover {
+                background: var(--surface);
+            }
+            .tool-item.active {
+                background: var(--surface);
+                border-left: 3px solid var(--accent);
+            }
+            .tool-item-name {
+                font-family: var(--mono);
+                font-size: 0.74rem;
+                font-weight: 600;
+                color: var(--blue);
+            }
+            .tool-item-desc {
+                font-family: var(--mono);
+                font-size: 0.66rem;
+                color: var(--muted);
+                margin-top: 2px;
+            }
+
+            /* Tool form */
+            .tool-form {
+                padding: 10px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+            }
+            .tool-form-title {
+                font-family: var(--mono);
+                font-size: 0.74rem;
+                font-weight: 700;
+                color: var(--accent);
+                margin-bottom: 8px;
+            }
+            .param-field {
+                margin-bottom: 8px;
+            }
+            .param-field label {
+                display: block;
+                font-family: var(--mono);
+                font-size: 0.68rem;
+                color: var(--text);
+                margin-bottom: 2px;
+            }
+            .param-field label .required {
+                color: var(--red);
+            }
+            .param-field input[type="text"],
+            .param-field input[type="number"],
+            .param-field textarea {
+                width: 100%;
+                box-sizing: border-box;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                color: var(--text);
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                padding: 4px 8px;
+            }
+            .param-field textarea {
+                min-height: 50px;
+                resize: vertical;
+            }
+            .param-field .param-desc {
+                font-size: 0.62rem;
+                color: var(--muted);
+                margin-top: 2px;
+            }
+            .param-field-checkbox {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .tool-form .btn-row {
+                margin-top: 8px;
+            }
+
+            /* Tool result */
+            .tool-result {
+                margin-top: 12px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 8px 10px;
+            }
+            .tool-result-label {
+                font-family: var(--mono);
+                font-size: 0.68rem;
+                font-weight: 700;
+                color: var(--muted);
+                margin-bottom: 4px;
+            }
+            .tool-result pre {
+                font-family: var(--mono);
+                font-size: 0.66rem;
+                color: var(--text);
+                white-space: pre-wrap;
+                word-break: break-all;
+                max-height: 200px;
+                overflow-y: auto;
+                margin: 0;
+            }
+            .tool-result.error pre {
+                color: var(--red);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1 id="page-title">MCP Babylon — Client Loopback</h1>
+            <span id="status-badge" class="badge connected">Ready</span>
+        </header>
+
+        <div class="layout">
+            <!-- Left panel: rover cards -->
+            <aside class="left-panel panel">
+                <div class="panel-title">Rovers</div>
+                <div class="panel-body" id="rover-list"></div>
+            </aside>
+
+            <!-- Right column -->
+            <div class="right-column">
+                <!-- Scene with viewport overlays -->
+                <div class="scene-panel">
+                    <canvas id="renderCanvas"></canvas>
+                    <div class="viewport-borders">
+                        <div class="vb-v"></div>
+                    </div>
+                    <div class="viewport-labels">
+                        <div class="viewport-label" style="top: 0; left: 0">rover_1</div>
+                        <div class="viewport-label right" style="top: 0; right: 0">rover_2</div>
+                    </div>
+                    <div id="overlay-container"></div>
+                </div>
+
+                <!-- Console -->
+                <section class="console-panel panel">
+                    <div class="panel-title">Console</div>
+                    <div class="panel-body" id="console-output"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Tool panel container (floating modals live here) -->
+        <div id="tool-panel-container"></div>
+
+        <!-- Babylon.js core + loaders (CDN) -->
+        <script src="https://cdn.babylonjs.com/babylon.js"></script>
+        <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+
+        <!-- MCP bundles -->
+        <script src="/bundle/mcp-core.js"></script>
+        <script src="/bundle/mcp-server.js"></script>
+        <script src="/bundle/mcp-babylon.js"></script>
+
+        <script>
+            "use strict";
+
+            // =========================================================
+            // Console helpers
+            // =========================================================
+            const consoleEl = document.getElementById("console-output");
+
+            function log(msg, level = "info") {
+                const ts = new Date().toLocaleTimeString("en", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+                const div = document.createElement("div");
+                div.className = `log-line ${level}`;
+                div.innerHTML = `<span class="ts">${ts}</span>  <span class="msg">${escHtml(msg)}</span>`;
+                consoleEl.appendChild(div);
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+
+            function escHtml(s) {
+                return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            }
+
+            // =========================================================
+            // MCP imports from UMD globals
+            // =========================================================
+            const { McpServerBuilder, LoopbackTransport, McpClient } = window.McpServer;
+            const { McpCameraAdapter, McpCameraBehavior } = window.McpBabylon;
+
+            // =========================================================
+            // Babylon.js engine + scene
+            // =========================================================
+            const canvas = document.getElementById("renderCanvas");
+            const engine = new BABYLON.Engine(canvas, true, {
+                preserveDrawingBuffer: true,
+                stencil: true,
+            });
+            const scene = new BABYLON.Scene(engine);
+
+            // =========================================================
+            // Robot definitions (2 rovers, left/right split)
+            // =========================================================
+            const ROBOT_DEFS = [
+                { name: "rover_1", pos: new BABYLON.Vector3(-4, 0, 0), color: new BABYLON.Color3(0.9, 0.25, 0.25) },
+                { name: "rover_2", pos: new BABYLON.Vector3(4, 0, 0), color: new BABYLON.Color3(0.25, 0.5, 0.95) },
+            ];
+
+            const VIEWPORTS = [
+                { x: 0, y: 0, w: 0.5, h: 1.0 },   // left  = rover_1
+                { x: 0.5, y: 0, w: 0.5, h: 1.0 },  // right = rover_2
+            ];
+
+            // =========================================================
+            // Build scene environment
+            // =========================================================
+            function createScene(scene) {
+                const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0, 1, 0), scene);
+                hemi.intensity = 0.6;
+
+                const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-1, -2, -1).normalize(), scene);
+                sun.intensity = 0.7;
+
+                const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 20, height: 20 }, scene);
+                const gMat = new BABYLON.StandardMaterial("groundMat", scene);
+                gMat.diffuseColor = new BABYLON.Color3(0.13, 0.13, 0.2);
+                gMat.specularColor = BABYLON.Color3.Black();
+                ground.material = gMat;
+
+                for (let i = 0; i < 5; i++) {
+                    const box = BABYLON.MeshBuilder.CreateBox(
+                        "obstacle_" + i,
+                        {
+                            width: 0.6 + Math.random() * 0.8,
+                            height: 0.5 + Math.random() * 1.5,
+                            depth: 0.6 + Math.random() * 0.8,
+                        },
+                        scene
+                    );
+                    box.position.set((Math.random() - 0.5) * 4, box.scaling.y * 0.5, (Math.random() - 0.5) * 4);
+                    const bMat = new BABYLON.StandardMaterial("obsMat_" + i, scene);
+                    bMat.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.4);
+                    bMat.specularColor = BABYLON.Color3.Black();
+                    box.material = bMat;
+                }
+            }
+
+            createScene(scene);
+
+            // =========================================================
+            // Load rover GLB model
+            // =========================================================
+            async function buildRobot(name, pos, color, scene) {
+                const result = await BABYLON.SceneLoader.ImportMeshAsync("", "/3dmodels/", "mars_rover_low_poly.glb", scene);
+
+                const root = new BABYLON.TransformNode(name, scene);
+                root.position = pos;
+
+                for (const m of result.meshes) {
+                    if (!m.parent || m.parent === scene) {
+                        m.parent = root;
+                    }
+                }
+
+                const bounds = root.getHierarchyBoundingVectors(true);
+                const size = bounds.max.subtract(bounds.min);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                if (maxDim > 0) {
+                    const desiredSize = 2;
+                    root.scaling.setAll(desiredSize / maxDim);
+                }
+
+                for (const m of result.meshes) {
+                    if (m.material) {
+                        const cloned = m.material.clone(name + "_" + m.material.name);
+                        if (cloned.albedoColor) {
+                            cloned.albedoColor = BABYLON.Color3.Lerp(cloned.albedoColor, color, 0.4);
+                        } else if (cloned.diffuseColor) {
+                            cloned.diffuseColor = BABYLON.Color3.Lerp(cloned.diffuseColor, color, 0.4);
+                        }
+                        m.material = cloned;
+                    }
+                }
+
+                return root;
+            }
+
+            function createRobotCamera(name, robotPos, vp, scene) {
+                const target = robotPos.add(new BABYLON.Vector3(0, 1, 0));
+                const camPos = robotPos.add(new BABYLON.Vector3(0, 4, -6));
+
+                const cam = new BABYLON.ArcRotateCamera(
+                    name + "_cam",
+                    Math.PI / 2,
+                    Math.acos(2 / camPos.subtract(target).length()),
+                    camPos.subtract(target).length(),
+                    target,
+                    scene
+                );
+                cam.viewport = new BABYLON.Viewport(vp.x, vp.y, vp.w, vp.h);
+                return cam;
+            }
+
+            // =========================================================
+            // Robot class (extended for client support)
+            // =========================================================
+            class Robot {
+                constructor(name, mesh, camera) {
+                    this.name = name;
+                    this.mesh = mesh;
+                    this.camera = camera;
+                    /** @type {import('@dev/core').IMcpServer[]} */
+                    this.McpServer = [];
+                    this.adapter = null;
+                    this.behavior = null;
+                    this.mcpClient = null;
+                    this.connectedTo = null;
+                    this.loopbackServer = null;
+                    this.iconEl = null;
+                    this.toolPanel = null;
+                    this.cardStatusEl = null;
+                    this.cardBtnEl = null;
+                }
+            }
+
+            // =========================================================
+            // McpToolPanel — reusable floating tool explorer
+            // =========================================================
+            class McpToolPanel {
+                /**
+                 * @param {McpClient} client
+                 * @param {HTMLElement} container
+                 * @param {{ serverName: string, onClose: () => void }} options
+                 */
+                constructor(client, container, options) {
+                    this._client = client;
+                    this._container = container;
+                    this._options = options;
+                    this._serverName = options.serverName;
+                    this._onClose = options.onClose || (() => {});
+                    this._anchorEl = options.anchorEl || null;
+                    this._el = null;
+                    this._resources = [];
+                    this._tools = [];
+                    this._activeTool = null;
+                    this._dragState = null;
+                }
+
+                async initialize() {
+                    try {
+                        this._resources = await this._client.listResources();
+                        log(`Tool panel: ${this._resources.length} resource(s) from ${this._serverName}`, "dim");
+                    } catch (e) {
+                        log(`Failed to list resources: ${e}`, "error");
+                        this._resources = [];
+                    }
+
+                    try {
+                        this._tools = await this._client.listTools();
+                        log(`Tool panel: ${this._tools.length} tool(s) from ${this._serverName}`, "dim");
+                    } catch (e) {
+                        log(`Failed to list tools: ${e}`, "error");
+                        this._tools = [];
+                    }
+
+                    // Discover concrete instance URIs by reading root resources.
+                    // Root resources (e.g. babylon://camera) return JSON listing instances
+                    // whose URIs are valid targets for tool calls.
+                    this._instanceUris = [];
+                    for (const res of this._resources) {
+                        try {
+                            const content = await this._client.readResource(res.uri);
+                            // content is McpResourceContent: { uri, text, mimeType }
+                            // Extract the text field — handle both object and string forms
+                            let raw;
+                            if (typeof content === "string") {
+                                raw = content;
+                            } else if (content && typeof content === "object") {
+                                raw = content.text;
+                            }
+                            if (!raw) continue;
+                            const parsed = JSON.parse(raw);
+                            if (Array.isArray(parsed)) {
+                                for (const item of parsed) {
+                                    if (item.uri) this._instanceUris.push(item.uri);
+                                }
+                            }
+                        } catch (e) {
+                            log(`Instance URI discovery error for ${res.uri}: ${e}`, "error");
+                        }
+                    }
+
+                    if (this._instanceUris.length > 0) {
+                        log(`Tool panel: discovered ${this._instanceUris.length} instance URI(s): ${this._instanceUris.join(", ")}`, "ok");
+                    } else {
+                        log(`Tool panel: no instance URIs discovered from ${this._resources.length} root resource(s)`, "warn");
+                    }
+
+                    this._buildDOM();
+                    this.show();
+                }
+
+                _buildDOM() {
+                    const panel = document.createElement("div");
+                    panel.className = "tool-panel";
+
+                    // Position near the anchor element (connection icon)
+                    if (this._anchorEl) {
+                        const rect = this._anchorEl.getBoundingClientRect();
+                        const panelW = 700;
+                        // Place below the icon, clamped to viewport
+                        let left = rect.left + rect.width / 2 - panelW / 2;
+                        left = Math.max(8, Math.min(left, window.innerWidth - panelW - 8));
+                        panel.style.left = left + "px";
+                        panel.style.top = (rect.bottom + 8) + "px";
+                    } else {
+                        panel.style.top = "80px";
+                        panel.style.right = "40px";
+                    }
+
+                    // Header (draggable)
+                    const header = document.createElement("div");
+                    header.className = "tool-panel-header";
+                    const ownerName = this._options?.ownerName || "unknown";
+                    header.innerHTML =
+                        `<span class="tool-panel-title">${escHtml(ownerName)} → ${escHtml(this._serverName)}</span>`;
+                    const closeBtn = document.createElement("button");
+                    closeBtn.className = "tool-panel-close";
+                    closeBtn.textContent = "\u2715";
+                    closeBtn.addEventListener("click", () => this._onClose());
+                    header.appendChild(closeBtn);
+                    panel.appendChild(header);
+
+                    // Drag logic
+                    header.addEventListener("mousedown", (e) => {
+                        if (e.target === closeBtn) return;
+                        this._dragState = {
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            origLeft: panel.offsetLeft,
+                            origTop: panel.offsetTop,
+                        };
+                        panel.style.right = "auto";
+                        panel.style.left = panel.offsetLeft + "px";
+                        e.preventDefault();
+                    });
+                    document.addEventListener("mousemove", (e) => {
+                        if (!this._dragState) return;
+                        panel.style.left = (this._dragState.origLeft + e.clientX - this._dragState.startX) + "px";
+                        panel.style.top = (this._dragState.origTop + e.clientY - this._dragState.startY) + "px";
+                    });
+                    document.addEventListener("mouseup", () => {
+                        this._dragState = null;
+                    });
+
+                    // Body — split layout: left (resources + tools list), right (form + result)
+                    const body = document.createElement("div");
+                    body.className = "tool-panel-body";
+
+                    // Left pane: resources + tool list
+                    const leftPane = document.createElement("div");
+                    leftPane.className = "tool-panel-left";
+
+                    // Resources section
+                    if (this._resources.length > 0) {
+                        const sec = this._createSection("Resources");
+                        for (const res of this._resources) {
+                            const item = document.createElement("div");
+                            item.className = "resource-item";
+                            item.innerHTML =
+                                `<span class="res-uri" title="${escHtml(res.uri)}">${escHtml(res.uri)}</span>`;
+                            const readBtn = document.createElement("button");
+                            readBtn.className = "res-read-btn";
+                            readBtn.textContent = "Read";
+                            readBtn.addEventListener("click", () => this._readResource(res.uri, item));
+                            item.appendChild(readBtn);
+                            sec.appendChild(item);
+                        }
+                        leftPane.appendChild(sec);
+                    }
+
+                    // Tools section
+                    if (this._tools.length > 0) {
+                        const sec = this._createSection("Tools");
+                        for (const tool of this._tools) {
+                            const item = document.createElement("div");
+                            item.className = "tool-item";
+                            item.innerHTML =
+                                `<div class="tool-item-name">${escHtml(tool.name)}</div>` +
+                                `<div class="tool-item-desc">${escHtml(tool.description || "")}</div>`;
+                            item.addEventListener("click", () => this._selectTool(tool));
+                            sec.appendChild(item);
+                        }
+                        leftPane.appendChild(sec);
+                    }
+
+                    body.appendChild(leftPane);
+
+                    // Right pane: form + result
+                    const rightPane = document.createElement("div");
+                    rightPane.className = "tool-panel-right";
+
+                    this._formContainer = document.createElement("div");
+                    rightPane.appendChild(this._formContainer);
+
+                    this._resultContainer = document.createElement("div");
+                    rightPane.appendChild(this._resultContainer);
+
+                    // Store left pane ref for active highlighting
+                    this._leftPane = leftPane;
+
+                    body.appendChild(rightPane);
+                    panel.appendChild(body);
+                    this._el = panel;
+                    this._container.appendChild(panel);
+                }
+
+                _createSection(title) {
+                    const sec = document.createElement("div");
+                    sec.className = "tool-panel-section";
+                    const h = document.createElement("div");
+                    h.className = "tool-panel-section-title";
+                    h.textContent = title;
+                    sec.appendChild(h);
+                    return sec;
+                }
+
+                async _readResource(uri, parentEl) {
+                    // Remove any existing content block after this item
+                    const existing = parentEl.nextElementSibling;
+                    if (existing && existing.classList.contains("resource-content")) {
+                        existing.remove();
+                        return;
+                    }
+                    try {
+                        log(`Reading resource: ${uri}`, "dim");
+                        const result = await this._client.readResource(uri);
+                        const content = document.createElement("div");
+                        content.className = "resource-content";
+                        content.textContent = typeof result === "string"
+                            ? result
+                            : JSON.stringify(result, null, 2);
+                        parentEl.insertAdjacentElement("afterend", content);
+                    } catch (e) {
+                        log(`Failed to read resource ${uri}: ${e}`, "error");
+                    }
+                }
+
+                /**
+                 * Returns the best default URI for auto-filling tool forms.
+                 * Uses discovered instance URIs (e.g. babylon://camera/rover_2_cam).
+                 */
+                _getDefaultUri() {
+                    if (this._instanceUris && this._instanceUris.length > 0) {
+                        return this._instanceUris[0];
+                    }
+                    return "";
+                }
+
+                _selectTool(tool) {
+                    // Highlight active tool in left pane
+                    this._activeTool = tool;
+                    this._leftPane.querySelectorAll(".tool-item").forEach((el) => el.classList.remove("active"));
+                    const items = this._leftPane.querySelectorAll(".tool-item");
+                    for (const item of items) {
+                        if (item.querySelector(".tool-item-name").textContent === tool.name) {
+                            item.classList.add("active");
+                        }
+                    }
+
+                    // Build form in right pane
+                    this._formContainer.innerHTML = "";
+                    this._resultContainer.innerHTML = "";
+
+                    const form = document.createElement("div");
+                    form.className = "tool-form";
+
+                    const title = document.createElement("div");
+                    title.className = "tool-form-title";
+                    title.textContent = tool.name;
+                    form.appendChild(title);
+
+                    if (tool.description) {
+                        const descEl = document.createElement("div");
+                        descEl.className = "param-desc";
+                        descEl.style.marginBottom = "10px";
+                        descEl.textContent = tool.description;
+                        form.appendChild(descEl);
+                    }
+
+                    const schema = tool.inputSchema || {};
+                    const properties = schema.properties || {};
+                    const required = schema.required || [];
+                    const fieldEls = {};
+                    const defaultUri = this._getDefaultUri();
+
+                    for (const [propName, propDef] of Object.entries(properties)) {
+                        const field = document.createElement("div");
+                        field.className = "param-field";
+                        const isRequired = required.includes(propName);
+
+                        // Auto-fill uri fields
+                        const isUriField = propName === "uri";
+                        const autoValue = isUriField ? defaultUri : undefined;
+
+                        if (propDef.type === "boolean") {
+                            const wrap = document.createElement("div");
+                            wrap.className = "param-field-checkbox";
+                            const cb = document.createElement("input");
+                            cb.type = "checkbox";
+                            cb.id = "param-" + propName;
+                            const lbl = document.createElement("label");
+                            lbl.htmlFor = cb.id;
+                            lbl.innerHTML = escHtml(propName) + (isRequired ? ' <span class="required">*</span>' : "");
+                            wrap.appendChild(cb);
+                            wrap.appendChild(lbl);
+                            field.appendChild(wrap);
+                            fieldEls[propName] = { el: cb, type: "boolean" };
+                        } else if (propDef.type === "number" || propDef.type === "integer") {
+                            const lbl = document.createElement("label");
+                            lbl.innerHTML = escHtml(propName) + (isRequired ? ' <span class="required">*</span>' : "");
+                            field.appendChild(lbl);
+                            const input = document.createElement("input");
+                            input.type = "number";
+                            input.step = propDef.type === "integer" ? "1" : "any";
+                            if (propDef.default !== undefined) input.value = propDef.default;
+                            field.appendChild(input);
+                            fieldEls[propName] = { el: input, type: "number" };
+                        } else if (propDef.type === "object" || propDef.type === "array") {
+                            const lbl = document.createElement("label");
+                            lbl.innerHTML = escHtml(propName) + (isRequired ? ' <span class="required">*</span>' : "");
+                            field.appendChild(lbl);
+                            const ta = document.createElement("textarea");
+                            ta.placeholder = "JSON";
+                            if (propDef.default !== undefined) ta.value = JSON.stringify(propDef.default);
+                            field.appendChild(ta);
+                            fieldEls[propName] = { el: ta, type: "json" };
+                        } else {
+                            // string or anything else
+                            const lbl = document.createElement("label");
+                            lbl.innerHTML = escHtml(propName) + (isRequired ? ' <span class="required">*</span>' : "");
+                            field.appendChild(lbl);
+
+                            if (propDef.enum) {
+                                const sel = document.createElement("select");
+                                sel.style.cssText = "width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:0.72rem;padding:4px 8px;";
+                                for (const val of propDef.enum) {
+                                    const opt = document.createElement("option");
+                                    opt.value = val;
+                                    opt.textContent = val;
+                                    sel.appendChild(opt);
+                                }
+                                if (propDef.default !== undefined) sel.value = propDef.default;
+                                field.appendChild(sel);
+                                fieldEls[propName] = { el: sel, type: "string" };
+                            } else if (isUriField && this._instanceUris.length > 0) {
+                                // URI field — use a select dropdown with discovered instance URIs
+                                const sel = document.createElement("select");
+                                sel.style.cssText = "width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:0.72rem;padding:4px 8px;";
+                                for (const uri of this._instanceUris) {
+                                    const opt = document.createElement("option");
+                                    opt.value = uri;
+                                    opt.textContent = uri;
+                                    sel.appendChild(opt);
+                                }
+                                sel.value = defaultUri;
+                                field.appendChild(sel);
+                                fieldEls[propName] = { el: sel, type: "string" };
+                            } else {
+                                const input = document.createElement("input");
+                                input.type = "text";
+                                if (autoValue) {
+                                    input.value = autoValue;
+                                } else if (propDef.default !== undefined) {
+                                    input.value = propDef.default;
+                                }
+                                field.appendChild(input);
+                                fieldEls[propName] = { el: input, type: "string" };
+                            }
+                        }
+
+                        if (propDef.description) {
+                            const desc = document.createElement("div");
+                            desc.className = "param-desc";
+                            desc.textContent = propDef.description;
+                            field.appendChild(desc);
+                        }
+
+                        form.appendChild(field);
+                    }
+
+                    const btnRow = document.createElement("div");
+                    btnRow.className = "btn-row";
+                    const execBtn = document.createElement("button");
+                    execBtn.textContent = "\u25b6 Execute";
+                    execBtn.addEventListener("click", () => this._executeTool(tool.name, fieldEls));
+                    btnRow.appendChild(execBtn);
+                    form.appendChild(btnRow);
+
+                    this._formContainer.appendChild(form);
+                }
+
+                async _executeTool(toolName, fieldEls) {
+                    const args = {};
+                    for (const [name, { el, type }] of Object.entries(fieldEls)) {
+                        if (type === "boolean") {
+                            args[name] = el.checked;
+                        } else if (type === "number") {
+                            const v = el.value.trim();
+                            if (v !== "") args[name] = parseFloat(v);
+                        } else if (type === "json") {
+                            const v = el.value.trim();
+                            if (v !== "") {
+                                try {
+                                    args[name] = JSON.parse(v);
+                                } catch (e) {
+                                    log(`Invalid JSON for ${name}: ${e}`, "error");
+                                    return;
+                                }
+                            }
+                        } else {
+                            const v = el.value.trim();
+                            if (v !== "") args[name] = v;
+                        }
+                    }
+
+                    log(`Calling tool: ${toolName}(${JSON.stringify(args)})`, "info");
+                    this._resultContainer.innerHTML = "";
+
+                    try {
+                        const result = await this._client.callTool(toolName, args);
+                        log(`Tool ${toolName} returned successfully`, "ok");
+
+                        const div = document.createElement("div");
+                        div.className = "tool-result";
+                        div.innerHTML =
+                            `<div class="tool-result-label">Result</div>` +
+                            `<pre>${escHtml(JSON.stringify(result, null, 2))}</pre>`;
+                        this._resultContainer.appendChild(div);
+                    } catch (e) {
+                        log(`Tool ${toolName} failed: ${e}`, "error");
+
+                        const div = document.createElement("div");
+                        div.className = "tool-result error";
+                        div.innerHTML =
+                            `<div class="tool-result-label">Error</div>` +
+                            `<pre>${escHtml(String(e))}</pre>`;
+                        this._resultContainer.appendChild(div);
+                    }
+                }
+
+                show() {
+                    if (this._el) this._el.style.display = "flex";
+                }
+
+                hide() {
+                    if (this._el) this._el.style.display = "none";
+                }
+
+                destroy() {
+                    if (this._el) {
+                        this._el.remove();
+                        this._el = null;
+                    }
+                }
+            }
+
+            // =========================================================
+            // Build robots
+            // =========================================================
+            let robots = [];
+
+            async function buildAllRobots() {
+                log("Loading rover models\u2026", "dim");
+                robots = [];
+                for (let i = 0; i < ROBOT_DEFS.length; i++) {
+                    const def = ROBOT_DEFS[i];
+                    const mesh = await buildRobot(def.name, def.pos, def.color, scene);
+                    const cam = createRobotCamera(def.name, def.pos, VIEWPORTS[i], scene);
+                    log(`${def.name}: pos (${def.pos.x}, ${def.pos.y}, ${def.pos.z}), camera "${cam.name}"`, "dim");
+                    const robot = new Robot(def.name, mesh, cam);
+                    robot.adapter = new McpCameraAdapter(scene, cam);
+                    robot.behavior = new McpCameraBehavior(robot.adapter);
+                    robots.push(robot);
+                }
+
+                scene.activeCameras = robots.map((r) => r.camera);
+                log(`${robots.length} rovers loaded. Behaviors ready.`, "ok");
+            }
+
+            // =========================================================
+            // Viewport-aware camera input
+            // =========================================================
+            let activeCamera = null;
+
+            function getCameraUnderPointer(evt) {
+                const rect = canvas.getBoundingClientRect();
+                const nx = (evt.clientX - rect.left) / rect.width;
+                const ny = 1 - (evt.clientY - rect.top) / rect.height;
+
+                for (const robot of robots) {
+                    const vp = robot.camera.viewport;
+                    if (nx >= vp.x && nx < vp.x + vp.width && ny >= vp.y && ny < vp.y + vp.height) {
+                        return robot.camera;
+                    }
+                }
+                return null;
+            }
+
+            canvas.addEventListener("pointermove", (evt) => {
+                const cam = getCameraUnderPointer(evt);
+                if (cam && cam !== activeCamera) {
+                    if (activeCamera) activeCamera.detachControl();
+                    cam.attachControl(canvas, true);
+                    activeCamera = cam;
+                }
+            });
+
+            canvas.addEventListener("pointerleave", () => {
+                if (activeCamera) {
+                    activeCamera.detachControl();
+                    activeCamera = null;
+                }
+            });
+
+            window.addEventListener("resize", () => engine.resize());
+
+            // =========================================================
+            // Connection logic
+            // =========================================================
+            async function connectRoverTo(source, target) {
+                if (source.mcpClient) {
+                    log(`${source.name} is already connected to ${source.connectedTo.name}. Disconnect first.`, "warn");
+                    return;
+                }
+
+                log(`Creating LoopbackTransport pair\u2026`, "dim");
+                const [serverEnd, clientEnd] = LoopbackTransport.createPair();
+
+                log(`Building loopback McpServer on ${target.name}\u2026`, "dim");
+                const loopbackServer = new McpServerBuilder()
+                    .withName(target.name)
+                    .withTransport(serverEnd)
+                    .withInitializer({
+                        initialize(_clientInfo, _caps) {
+                            return {
+                                protocolVersion: "2024-11-05",
+                                serverInfo: { name: target.name, version: "1.0.0" },
+                                instructions:
+                                    `You are connected to ${target.name}'s camera via loopback. ` +
+                                    `This server controls ONLY ${target.name}'s camera.`,
+                            };
+                        },
+                    })
+                    .register(target.behavior)
+                    .build();
+
+                log(`Creating McpClient on ${source.name}\u2026`, "dim");
+                const client = new McpClient({ name: source.name, version: "1.0.0" }, clientEnd);
+
+                // Start server and client in the same synchronous block.
+                // LoopbackTransport.connect() opens both ends via queueMicrotask,
+                // so both onOpen callbacks must be wired before any microtask fires.
+                log(`Connecting ${source.name} \u2192 ${target.name} (initialize handshake)\u2026`, "dim");
+                const serverPromise = loopbackServer.start();
+                const initResult = await client.connect();
+                await serverPromise;
+                log(`Loopback server started on ${target.name}`, "ok");
+
+                log(`Handshake complete:`, "ok");
+                log(`  Protocol: ${initResult.protocolVersion}`, "dim");
+                log(`  Server: ${initResult.serverInfo?.name} v${initResult.serverInfo?.version}`, "dim");
+                if (initResult.instructions) {
+                    log(`  Instructions: ${initResult.instructions}`, "dim");
+                }
+
+                source.mcpClient = client;
+                source.connectedTo = target;
+                target.loopbackServer = loopbackServer;
+                target.McpServer.push(loopbackServer);
+
+                // Update UI
+                updateRoverCard(source);
+                updateIconState(source);
+
+                // Show tool panel
+                const panelContainer = document.getElementById("tool-panel-container");
+                source.toolPanel = new McpToolPanel(client, panelContainer, {
+                    ownerName: source.name,
+                    serverName: target.name,
+                    onClose: () => disconnectRover(source),
+                    anchorEl: source.iconEl,
+                });
+                await source.toolPanel.initialize();
+
+                log(`${source.name} is now connected to ${target.name}. Tool panel open.`, "ok");
+            }
+
+            async function disconnectRover(source) {
+                if (!source.mcpClient) return;
+
+                const targetName = source.connectedTo?.name || "unknown";
+                log(`Disconnecting ${source.name} from ${targetName}\u2026`, "dim");
+
+                // Destroy tool panel
+                if (source.toolPanel) {
+                    source.toolPanel.destroy();
+                    source.toolPanel = null;
+                }
+
+                // Disconnect client
+                try {
+                    source.mcpClient.disconnect();
+                } catch (e) {
+                    log(`Client disconnect error: ${e}`, "error");
+                }
+
+                // Stop loopback server on the target
+                if (source.connectedTo && source.connectedTo.loopbackServer) {
+                    try {
+                        await source.connectedTo.loopbackServer.stop();
+                    } catch (e) {
+                        log(`Server stop error: ${e}`, "error");
+                    }
+                    source.connectedTo.McpServer = source.connectedTo.McpServer.filter(
+                        (s) => s !== source.connectedTo.loopbackServer
+                    );
+                    source.connectedTo.loopbackServer = null;
+                }
+
+                source.mcpClient = null;
+                source.connectedTo = null;
+
+                // Update UI
+                updateRoverCard(source);
+                updateIconState(source);
+
+                log(`${source.name} disconnected from ${targetName}.`, "warn");
+            }
+
+            // =========================================================
+            // 3D overlay connection icons
+            // =========================================================
+            const overlayContainer = document.getElementById("overlay-container");
+
+            function createOverlayIcons() {
+                for (const robot of robots) {
+                    const icon = document.createElement("div");
+                    icon.className = "connection-icon";
+                    icon.textContent = "\u{1F517}";
+                    icon.style.display = "none";
+
+                    // Dropdown (hidden by default)
+                    const dropdown = document.createElement("div");
+                    dropdown.className = "connection-dropdown";
+                    dropdown.style.display = "none";
+                    icon.appendChild(dropdown);
+
+                    icon.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        toggleDropdown(robot);
+                    });
+
+                    robot.iconEl = icon;
+                    overlayContainer.appendChild(icon);
+                }
+
+                // Close dropdowns on outside click
+                document.addEventListener("click", () => {
+                    for (const r of robots) {
+                        const dd = r.iconEl.querySelector(".connection-dropdown");
+                        if (dd) dd.style.display = "none";
+                    }
+                });
+            }
+
+            function toggleDropdown(robot) {
+                const dd = robot.iconEl.querySelector(".connection-dropdown");
+                const isVisible = dd.style.display !== "none";
+
+                // Close all dropdowns
+                for (const r of robots) {
+                    const d = r.iconEl.querySelector(".connection-dropdown");
+                    if (d) d.style.display = "none";
+                }
+
+                if (isVisible) return;
+
+                // Build dropdown content
+                dd.innerHTML = "";
+
+                if (robot.mcpClient) {
+                    // Already connected — show disconnect option
+                    const item = document.createElement("button");
+                    item.className = "dd-item disconnect";
+                    item.textContent = `Disconnect from ${robot.connectedTo.name}`;
+                    item.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        dd.style.display = "none";
+                        disconnectRover(robot);
+                    });
+                    dd.appendChild(item);
+                } else {
+                    // List other rovers as connection targets
+                    for (const other of robots) {
+                        if (other === robot) continue;
+                        const item = document.createElement("button");
+                        item.className = "dd-item";
+                        item.textContent = `Connect to ${other.name}`;
+                        item.addEventListener("click", (e) => {
+                            e.stopPropagation();
+                            dd.style.display = "none";
+                            connectRoverTo(robot, other);
+                        });
+                        dd.appendChild(item);
+                    }
+                }
+
+                dd.style.display = "block";
+            }
+
+            function updateIconState(robot) {
+                if (!robot.iconEl) return;
+                if (robot.mcpClient) {
+                    robot.iconEl.classList.add("connected");
+                } else {
+                    robot.iconEl.classList.remove("connected");
+                }
+            }
+
+            function updateOverlayPositions() {
+                const rw = engine.getRenderWidth();
+                const rh = engine.getRenderHeight();
+                const canvasRect = canvas.getBoundingClientRect();
+                const scaleX = canvasRect.width / rw;
+                const scaleY = canvasRect.height / rh;
+
+                for (const robot of robots) {
+                    if (!robot.iconEl) continue;
+
+                    const worldPos = robot.mesh.position.add(new BABYLON.Vector3(0, 2.5, 0));
+
+                    // Project through this rover's own camera (each rover has its own viewport)
+                    const cam = robot.camera;
+                    const vp = cam.viewport;
+                    const vpPixel = new BABYLON.Viewport(
+                        vp.x * rw,
+                        vp.y * rh,
+                        vp.width * rw,
+                        vp.height * rh
+                    );
+
+                    const transform = cam.getViewMatrix().multiply(cam.getProjectionMatrix());
+
+                    const projected = BABYLON.Vector3.Project(
+                        worldPos,
+                        BABYLON.Matrix.Identity(),
+                        transform,
+                        vpPixel
+                    );
+
+                    if (
+                        projected.z > 0 && projected.z < 1 &&
+                        projected.x >= vpPixel.x && projected.x <= vpPixel.x + vpPixel.width &&
+                        projected.y >= vpPixel.y && projected.y <= vpPixel.y + vpPixel.height
+                    ) {
+                        robot.iconEl.style.left = (projected.x * scaleX) + "px";
+                        robot.iconEl.style.top = (projected.y * scaleY) + "px";
+                        robot.iconEl.style.display = "flex";
+                    } else {
+                        robot.iconEl.style.display = "none";
+                    }
+                }
+            }
+
+            // =========================================================
+            // Left panel rover cards
+            // =========================================================
+            const roverListEl = document.getElementById("rover-list");
+
+            function buildRoverCards() {
+                roverListEl.innerHTML = "";
+                for (let i = 0; i < robots.length; i++) {
+                    const robot = robots[i];
+                    const def = ROBOT_DEFS[i];
+
+                    const card = document.createElement("div");
+                    card.className = "rover-card";
+
+                    const header = document.createElement("div");
+                    header.className = "rover-card-header";
+                    const dot = document.createElement("span");
+                    dot.className = "rover-dot";
+                    dot.style.background = `rgb(${Math.round(def.color.r * 255)}, ${Math.round(def.color.g * 255)}, ${Math.round(def.color.b * 255)})`;
+                    header.appendChild(dot);
+                    const nameSpan = document.createElement("span");
+                    nameSpan.className = "rover-card-name";
+                    nameSpan.textContent = robot.name;
+                    header.appendChild(nameSpan);
+                    card.appendChild(header);
+
+                    const status = document.createElement("div");
+                    status.className = "rover-card-status";
+                    status.textContent = "Disconnected";
+                    card.appendChild(status);
+                    robot.cardStatusEl = status;
+
+                    const btn = document.createElement("button");
+                    btn.textContent = "\u{1F517} Connect";
+                    btn.addEventListener("click", () => handleCardButton(robot));
+                    card.appendChild(btn);
+                    robot.cardBtnEl = btn;
+
+                    roverListEl.appendChild(card);
+                }
+            }
+
+            function handleCardButton(robot) {
+                if (robot.mcpClient) {
+                    disconnectRover(robot);
+                } else {
+                    // Find the other rover
+                    const target = robots.find((r) => r !== robot);
+                    if (target) connectRoverTo(robot, target);
+                }
+            }
+
+            function updateRoverCard(robot) {
+                if (!robot.cardStatusEl || !robot.cardBtnEl) return;
+                if (robot.mcpClient) {
+                    robot.cardStatusEl.textContent = `Connected to ${robot.connectedTo.name}`;
+                    robot.cardStatusEl.className = "rover-card-status ok";
+                    robot.cardBtnEl.textContent = "\u26D4 Disconnect";
+                } else {
+                    robot.cardStatusEl.textContent = "Disconnected";
+                    robot.cardStatusEl.className = "rover-card-status";
+                    robot.cardBtnEl.textContent = "\u{1F517} Connect";
+                }
+            }
+
+            // =========================================================
+            // Initialization
+            // =========================================================
+            buildAllRobots()
+                .then(() => {
+                    createOverlayIcons();
+                    buildRoverCards();
+                    scene.onAfterRenderObservable.add(updateOverlayPositions);
+                    engine.runRenderLoop(() => scene.render());
+                    log("Ready. Click a connection icon above a rover or use the left panel to connect.", "dim");
+                })
+                .catch((err) => {
+                    log(`Failed to load rover models: ${err}`, "error");
+                });
+
+            log("Loading rover models\u2026 please wait.", "dim");
+        </script>
+    </body>
+</html>

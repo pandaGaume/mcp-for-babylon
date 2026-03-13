@@ -28,28 +28,38 @@
                 padding: 3px 10px;
                 border-radius: 0 0 6px 0;
             }
-            .viewport-label.top-right  { border-radius: 0 0 0 6px; }
-            .viewport-label.bot-left   { border-radius: 0 6px 0 0; }
-            .viewport-label.bot-right  { border-radius: 6px 0 0 0; }
+            .viewport-label.top-right {
+                border-radius: 0 0 0 6px;
+            }
+            .viewport-label.bot-left {
+                border-radius: 0 6px 0 0;
+            }
+            .viewport-label.bot-right {
+                border-radius: 6px 0 0 0;
+            }
 
             /* Viewport grid borders */
             .viewport-borders {
                 position: absolute;
-                top: 0; left: 0;
-                width: 100%; height: 100%;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
                 pointer-events: none;
                 z-index: 1;
             }
             .viewport-borders .vb-h {
                 position: absolute;
-                left: 0; right: 0;
+                left: 0;
+                right: 0;
                 top: 50%;
                 height: 1px;
                 background: var(--muted);
             }
             .viewport-borders .vb-v {
                 position: absolute;
-                top: 0; bottom: 0;
+                top: 0;
+                bottom: 0;
                 left: 50%;
                 width: 1px;
                 background: var(--muted);
@@ -61,7 +71,9 @@
                 gap: 6px;
                 align-items: center;
             }
-            .endpoint-row input { flex: 1; }
+            .endpoint-row input {
+                flex: 1;
+            }
             .copy-btn {
                 background: var(--surface);
                 border: 1px solid var(--border);
@@ -71,10 +83,18 @@
                 font-size: 0.72rem;
                 padding: 4px 7px;
                 flex-shrink: 0;
-                transition: color 0.15s, border-color 0.15s;
+                transition:
+                    color 0.15s,
+                    border-color 0.15s;
             }
-            .copy-btn:hover { color: var(--text); border-color: var(--text); }
-            .copy-btn.copied { color: var(--green); border-color: var(--green); }
+            .copy-btn:hover {
+                color: var(--text);
+                border-color: var(--text);
+            }
+            .copy-btn.copied {
+                color: var(--green);
+                border-color: var(--green);
+            }
         </style>
     </head>
     <body>
@@ -110,10 +130,10 @@
                         <div class="vb-v"></div>
                     </div>
                     <div class="viewport-labels">
-                        <div class="viewport-label" style="top:0; left:0">robot_1</div>
-                        <div class="viewport-label top-right" style="top:0; right:0">robot_2</div>
-                        <div class="viewport-label bot-left" style="bottom:0; left:0">robot_3</div>
-                        <div class="viewport-label bot-right" style="bottom:0; right:0">robot_4</div>
+                        <div class="viewport-label" style="top: 0; left: 0">robot_1</div>
+                        <div class="viewport-label top-right" style="top: 0; right: 0">robot_2</div>
+                        <div class="viewport-label bot-left" style="bottom: 0; left: 0">robot_3</div>
+                        <div class="viewport-label bot-right" style="bottom: 0; right: 0">robot_4</div>
                     </div>
                 </div>
 
@@ -198,17 +218,17 @@
             // =========================================================
             const ROBOT_DEFS = [
                 { name: "robot_1", pos: new BABYLON.Vector3(-4, 0, -4), color: new BABYLON.Color3(0.9, 0.25, 0.25) },
-                { name: "robot_2", pos: new BABYLON.Vector3( 4, 0, -4), color: new BABYLON.Color3(0.25, 0.8, 0.3)  },
-                { name: "robot_3", pos: new BABYLON.Vector3(-4, 0,  4), color: new BABYLON.Color3(0.25, 0.5, 0.95) },
-                { name: "robot_4", pos: new BABYLON.Vector3( 4, 0,  4), color: new BABYLON.Color3(0.9, 0.7, 0.1)  },
+                { name: "robot_2", pos: new BABYLON.Vector3(4, 0, -4), color: new BABYLON.Color3(0.25, 0.8, 0.3) },
+                { name: "robot_3", pos: new BABYLON.Vector3(-4, 0, 4), color: new BABYLON.Color3(0.25, 0.5, 0.95) },
+                { name: "robot_4", pos: new BABYLON.Vector3(4, 0, 4), color: new BABYLON.Color3(0.9, 0.7, 0.1) },
             ];
 
             // Viewport layout: 2x2 grid
             const VIEWPORTS = [
-                { x: 0,   y: 0.5, w: 0.5, h: 0.5 }, // top-left     = robot_1
+                { x: 0, y: 0.5, w: 0.5, h: 0.5 }, // top-left     = robot_1
                 { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }, // top-right    = robot_2
-                { x: 0,   y: 0,   w: 0.5, h: 0.5 }, // bottom-left  = robot_3
-                { x: 0.5, y: 0,   w: 0.5, h: 0.5 }, // bottom-right = robot_4
+                { x: 0, y: 0, w: 0.5, h: 0.5 }, // bottom-left  = robot_3
+                { x: 0.5, y: 0, w: 0.5, h: 0.5 }, // bottom-right = robot_4
             ];
 
             /**
@@ -216,12 +236,7 @@
              * places it at the specified position. Returns the root transform node.
              */
             async function buildRobot(name, pos, color, scene) {
-                const result = await BABYLON.SceneLoader.ImportMeshAsync(
-                    "",
-                    "/3dmodels/",
-                    "mars_rover_low_poly_rover.glb",
-                    scene,
-                );
+                const result = await BABYLON.SceneLoader.ImportMeshAsync("", "/3dmodels/", "mars_rover_low_poly.glb", scene);
 
                 // Wrap everything under a named root node
                 const root = new BABYLON.TransformNode(name, scene);
@@ -272,11 +287,11 @@
 
                 const cam = new BABYLON.ArcRotateCamera(
                     name + "_cam",
-                    Math.PI / 2,                                            // alpha
-                    Math.acos(2 / camPos.subtract(target).length()),        // beta
-                    camPos.subtract(target).length(),                       // radius
+                    Math.PI / 2, // alpha
+                    Math.acos(2 / camPos.subtract(target).length()), // beta
+                    camPos.subtract(target).length(), // radius
                     target,
-                    scene,
+                    scene
                 );
                 cam.viewport = new BABYLON.Viewport(vp.x, vp.y, vp.w, vp.h);
                 // Do NOT call attachControl here — we manage input per-viewport below.
@@ -317,16 +332,16 @@
 
                 // A few decorative obstacles in the middle
                 for (let i = 0; i < 5; i++) {
-                    const box = BABYLON.MeshBuilder.CreateBox("obstacle_" + i, {
-                        width: 0.6 + Math.random() * 0.8,
-                        height: 0.5 + Math.random() * 1.5,
-                        depth: 0.6 + Math.random() * 0.8,
-                    }, scene);
-                    box.position.set(
-                        (Math.random() - 0.5) * 4,
-                        box.scaling.y * 0.5,
-                        (Math.random() - 0.5) * 4,
+                    const box = BABYLON.MeshBuilder.CreateBox(
+                        "obstacle_" + i,
+                        {
+                            width: 0.6 + Math.random() * 0.8,
+                            height: 0.5 + Math.random() * 1.5,
+                            depth: 0.6 + Math.random() * 0.8,
+                        },
+                        scene
                     );
+                    box.position.set((Math.random() - 0.5) * 4, box.scaling.y * 0.5, (Math.random() - 0.5) * 4);
                     const bMat = new BABYLON.StandardMaterial("obsMat_" + i, scene);
                     bMat.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.4);
                     bMat.specularColor = BABYLON.Color3.Black();
@@ -362,13 +377,12 @@
 
             function getCameraUnderPointer(evt) {
                 const rect = canvas.getBoundingClientRect();
-                const nx = (evt.clientX - rect.left) / rect.width;   // 0..1
+                const nx = (evt.clientX - rect.left) / rect.width; // 0..1
                 const ny = 1 - (evt.clientY - rect.top) / rect.height; // 0..1 (bottom=0)
 
                 for (const robot of robots) {
                     const vp = robot.camera.viewport;
-                    if (nx >= vp.x && nx < vp.x + vp.width &&
-                        ny >= vp.y && ny < vp.y + vp.height) {
+                    if (nx >= vp.x && nx < vp.x + vp.width && ny >= vp.y && ny < vp.y + vp.height) {
                         return robot.camera;
                     }
                 }
@@ -394,12 +408,14 @@
             window.addEventListener("resize", () => engine.resize());
 
             // Kick off async model loading, then start the render loop
-            buildAllRobots().then(() => {
-                engine.runRenderLoop(() => scene.render());
-                log("Ready. Press \u25b6 Start to connect all 4 rovers via multiplex.", "dim");
-            }).catch((err) => {
-                log(`Failed to load rover models: ${err}`, "error");
-            });
+            buildAllRobots()
+                .then(() => {
+                    engine.runRenderLoop(() => scene.render());
+                    log("Ready. Press \u25b6 Start to connect all 4 rovers via multiplex.", "dim");
+                })
+                .catch((err) => {
+                    log(`Failed to load rover models: ${err}`, "error");
+                });
 
             // =========================================================
             // MCP server lifecycle — one server per robot, multiplexed
@@ -457,9 +473,7 @@
                         servers.push(server);
 
                         // Show MCP endpoint in the left panel
-                        const httpBase = wsUrl
-                            .replace(/^ws(s?):\/\//, "http$1://")
-                            .replace(/\/providers$/, "");
+                        const httpBase = wsUrl.replace(/^ws(s?):\/\//, "http$1://").replace(/\/providers$/, "");
                         const mcpUrl = `${httpBase}/${encodeURIComponent(robot.name)}/mcp`;
 
                         const div = document.createElement("div");
@@ -475,7 +489,10 @@
                             navigator.clipboard.writeText(mcpUrl).then(() => {
                                 e.target.textContent = "\u2713";
                                 e.target.classList.add("copied");
-                                setTimeout(() => { e.target.innerHTML = "&#x2398;"; e.target.classList.remove("copied"); }, 1500);
+                                setTimeout(() => {
+                                    e.target.innerHTML = "&#x2398;";
+                                    e.target.classList.remove("copied");
+                                }, 1500);
                             });
                         });
                         endpointListEl.appendChild(div);
@@ -493,7 +510,11 @@
                     log(`Failed: ${err}`, "error");
                     // Clean up any that started
                     for (const s of servers) {
-                        try { await s.stop(); } catch { /* */ }
+                        try {
+                            await s.stop();
+                        } catch {
+                            /* */
+                        }
                     }
                     servers = [];
                 }
@@ -501,7 +522,11 @@
 
             document.getElementById("stop-btn").addEventListener("click", async () => {
                 for (const s of servers) {
-                    try { await s.stop(); } catch (err) { log(`Stop error: ${err}`, "error"); }
+                    try {
+                        await s.stop();
+                    } catch (err) {
+                        log(`Stop error: ${err}`, "error");
+                    }
                 }
                 servers = [];
                 for (const robot of robots) robot.McpServer = [];
