@@ -67,6 +67,7 @@ import {
     Viewer,
 } from "cesium";
 import { JsonRpcMimeType, McpAdapterBase, McpResourceContent, McpToolResult, McpToolResults, ToolSupport } from "@dev/core";
+import { IHasImageFiltering, IImageFilterSet, ImageFilterSet } from "@dev/filters";
 import { ICameraState, IFrustum, IScenePickHit, IScenePickResult, ISceneVisibleObjectsState, IVisibleObjectState, McpCameraBehavior } from "@dev/behaviors";
 import { resolveToCartesian3 } from "@dev/geodesy";
 import { McpCesiumDomain, McpCameraResourceUriPrefix } from "../mcp.commons";
@@ -141,8 +142,11 @@ const ALL_TOOLS = [
  *
  * All vectors are in the ECEF right-handed coordinate system (metres).
  */
-export class McpCameraAdapter extends McpAdapterBase {
+export class McpCameraAdapter extends McpAdapterBase implements IHasImageFiltering {
     // ── State ────────────────────────────────────────────────────────────
+
+    /** Composable filter manager for camera snapshots. */
+    public readonly imageFiltering: IImageFilterSet = new ImageFilterSet();
 
     /** The CesiumJS Viewer instance that owns the scene and camera. */
     private _viewer: Viewer;
@@ -231,6 +235,7 @@ export class McpCameraAdapter extends McpAdapterBase {
     /** Stops any running animation and cleans up event emitters. */
     public override dispose(): void {
         this._stopAnimation();
+        this.imageFiltering.dispose();
         super.dispose();
     }
 
@@ -524,17 +529,49 @@ export class McpCameraAdapter extends McpAdapterBase {
             // camera_snapshot
             // -----------------------------------------------------------------
             case McpCameraBehavior.CameraSnapshotFn: {
+                const rawFilters = args["filters"];
+                // Omitted → empty array (raw capture, no filters).
+                // Callers must explicitly name the filters they want.
+                const filterNames: string[] = rawFilters === undefined
+                    ? []
+                    : Array.isArray(rawFilters)
+                        ? rawFilters as string[]
+                        : typeof rawFilters === "string"
+                            ? [rawFilters]
+                            : [];
+
                 try {
                     // Force a render so the canvas has the latest frame.
                     this._viewer.render();
 
-                    const canvas = this._viewer.canvas;
-                    const dataUrl = canvas.toDataURL("image/png");
+                    const canvas = this._viewer.canvas as HTMLCanvasElement;
+                    const w = canvas.width;
+                    const h = canvas.height;
 
-                    // Strip the "data:image/png;base64," prefix — MCP image content
-                    // expects raw base64.
-                    const comma = dataUrl.indexOf(",");
-                    const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+                    // Read raw RGBA pixels directly from the WebGL framebuffer.
+                    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+                    if (!gl) {
+                        return McpToolResults.error("Snapshot failed: unable to obtain WebGL context.");
+                    }
+                    const pixels = new Uint8Array(w * h * 4);
+                    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+                    // WebGL readPixels returns rows bottom-to-top; flip vertically.
+                    const flipped = new Uint8ClampedArray(w * h * 4);
+                    const rowBytes = w * 4;
+                    for (let y = 0; y < h; y++) {
+                        flipped.set(pixels.subarray((h - 1 - y) * rowBytes, (h - y) * rowBytes), y * rowBytes);
+                    }
+                    const imageData = new ImageData(flipped, w, h);
+
+                    // Run the snapshot filter pipeline on raw pixels.
+                    const filtered = await this.imageFiltering.applyFiltersAsync(imageData, filterNames, {
+                        viewer: this._viewer,
+                        scene: this._scene,
+                    });
+
+                    // Single base64 encode at the very end.
+                    const base64 = await this.imageFiltering.imageDataToBase64(filtered);
                     return McpToolResults.image(base64, "image/png");
                 } catch (err) {
                     return McpToolResults.error(`Snapshot failed: ${err instanceof Error ? err.message : String(err)}`);

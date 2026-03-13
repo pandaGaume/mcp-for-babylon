@@ -24,10 +24,12 @@ import {
     StandardMaterial,
     Tags,
     TargetCamera,
-    Tools,
+    RenderTargetTexture,
     Vector3,
+    Viewport,
 } from "@babylonjs/core";
 import { JsonRpcMimeType, McpAdapterBase, McpResourceContent, McpToolResult, McpToolResults } from "@dev/core";
+import { IHasImageFiltering, IImageFilterSet, ImageFilterSet } from "@dev/filters";
 import {
     ICameraState,
     IFrustum,
@@ -89,7 +91,7 @@ const ALL_TOOLS = [
  * Angular deltas (orbit), scale factors (zoom), and screen-plane offsets (pan, dolly)
  * are coordinate-system-agnostic scalar values and require no conversion.
  */
-export class McpCameraAdapter extends McpAdapterBase {
+export class McpCameraAdapter extends McpAdapterBase implements IHasImageFiltering {
     private _scene: Scene;
     private _indexedCameras = new Map<string, Camera>();
     private _observers: Nullable<Observer<Camera>>[] = [];
@@ -97,6 +99,9 @@ export class McpCameraAdapter extends McpAdapterBase {
 
     /** Tracks per-camera active animation observers so they can be cancelled on demand. */
     private _activeAnimations = new Map<string, Observer<Scene>>();
+
+    /** Composable filter manager for camera snapshots. */
+    public readonly imageFiltering: IImageFilterSet = new ImageFilterSet();
 
     public constructor(scene?: Scene, cameras?: Camera | Camera[]) {
         super(McpBabylonDomain);
@@ -458,35 +463,74 @@ export class McpCameraAdapter extends McpAdapterBase {
             // -----------------------------------------------------------------
             case McpCameraBehavior.CameraSnapshotFn: {
                 const sizeArg = args["size"] as { width?: number; height?: number; precision?: number } | undefined;
-
-                // Build the Babylon.js size parameter from the optional size argument.
-                // Priority: explicit width+height → precision → default native resolution (precision 1).
-                let bjsSize: number | { width: number; height: number } | { precision: number };
-                if (sizeArg?.width && sizeArg?.height) {
-                    bjsSize = { width: Math.round(sizeArg.width), height: Math.round(sizeArg.height) };
-                } else if (sizeArg?.precision) {
-                    bjsSize = { precision: sizeArg.precision };
-                } else {
-                    bjsSize = { precision: 1 }; // native viewport resolution
-                }
+                const rawFilters = args["filters"];
+                // Omitted → empty array (raw capture, no filters).
+                // Callers must explicitly name the filters they want.
+                const filterNames: string[] = rawFilters === undefined
+                    ? []
+                    : Array.isArray(rawFilters)
+                        ? rawFilters as string[]
+                        : typeof rawFilters === "string"
+                            ? [rawFilters]
+                            : [];
 
                 try {
                     const engine = this._scene.getEngine();
-                    // Render off-screen from the specified camera, regardless of which camera is active.
-                    const dataUrl = await Tools.CreateScreenshotUsingRenderTargetAsync(
+
+                    // Compute pixel dimensions.
+                    // Priority: explicit width+height → precision → default native resolution (precision 1).
+                    let w: number, h: number;
+                    if (sizeArg?.width && sizeArg?.height) {
+                        w = Math.round(sizeArg.width);
+                        h = Math.round(sizeArg.height);
+                    } else {
+                        const precision = sizeArg?.precision ?? 1;
+                        w = Math.round(engine.getRenderWidth() * precision);
+                        h = Math.round(engine.getRenderHeight() * precision);
+                    }
+
+                    // Render the scene off-screen to a render target at the requested size.
+                    // Temporarily override the camera viewport to full so the RTT
+                    // captures the entire frame (not just the camera's split region).
+                    const savedViewport = camera.viewport;
+                    camera.viewport = new Viewport(0, 0, 1, 1);
+
+                    const rtt = new RenderTargetTexture("_mcp_snapshot", { width: w, height: h }, this._scene, false);
+                    rtt.activeCamera = camera;
+                    // Include all meshes — renderList defaults to [] which renders nothing.
+                    rtt.renderList = null;
+                    rtt.render(true);
+
+                    // Restore original viewport.
+                    camera.viewport = savedViewport;
+
+                    // Read raw RGBA pixels from the texture.
+                    const rawPixels = await rtt.readPixels()!;
+                    rtt.dispose();
+
+                    if (!rawPixels) {
+                        return McpToolResults.error(`Snapshot failed for camera "${camera.name}": readPixels returned null.`);
+                    }
+
+                    // WebGL readPixels returns rows bottom-to-top; flip vertically
+                    // so the ImageData follows the standard top-to-bottom convention.
+                    const src = new Uint8ClampedArray(rawPixels.buffer, rawPixels.byteOffset, rawPixels.byteLength);
+                    const flipped = new Uint8ClampedArray(w * h * 4);
+                    const rowBytes = w * 4;
+                    for (let y = 0; y < h; y++) {
+                        flipped.set(src.subarray((h - 1 - y) * rowBytes, (h - y) * rowBytes), y * rowBytes);
+                    }
+                    const imageData = new ImageData(flipped, w, h);
+
+                    // Run the snapshot filter pipeline on raw pixels.
+                    const filtered = await this.imageFiltering.applyFiltersAsync(imageData, filterNames, {
+                        scene: this._scene,
                         engine,
                         camera,
-                        bjsSize,
-                        "image/png",
-                        1, // MSAA samples
-                        false, // antialiasing (handled by MSAA)
-                        undefined, // fileName — not used in async path
-                        false, // renderSprites
-                        true // dumpEvenIfNotActive — capture even if camera is not the scene's active camera
-                    );
-                    // Strip the "data:image/png;base64," prefix — MCP image content expects raw base64.
-                    const comma = dataUrl.indexOf(",");
-                    const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+                    });
+
+                    // Single base64 encode at the very end.
+                    const base64 = await this.imageFiltering.imageDataToBase64(filtered);
                     return McpToolResults.image(base64, "image/png");
                 } catch (err) {
                     return McpToolResults.error(`Snapshot failed for camera "${camera.name}": ${err instanceof Error ? err.message : String(err)}`);
@@ -833,6 +877,7 @@ export class McpCameraAdapter extends McpAdapterBase {
     /** Removes all BJS observables and clears the event emitters inherited from {@link McpAdapterBase}. */
     public override dispose(): void {
         this._stopAllAnimations();
+        this.imageFiltering.dispose();
         super.dispose();
         this._observers.forEach((observer) => {
             observer?.remove();

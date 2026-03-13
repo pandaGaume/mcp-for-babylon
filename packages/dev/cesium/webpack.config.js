@@ -69,6 +69,12 @@ function makeBundle(name, entry, out, mode) {
                 }
                 callback();
             },
+            ({ request }, callback) => {
+                if (request.match("^@dev/filters")) {
+                    return callback(null, "McpFilters");
+                }
+                callback();
+            },
         ],
         module: { rules: [tsRule] },
         resolve,

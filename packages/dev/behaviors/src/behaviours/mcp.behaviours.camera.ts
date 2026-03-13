@@ -481,6 +481,15 @@ export class McpCameraBehavior extends McpBehavior {
                             },
                             additionalProperties: false,
                         },
+                        filters: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: this._resolvePropertyDescription(
+                                McpCameraBehavior.CameraSnapshotFn,
+                                "filters",
+                                "Filter names to apply after capture. Omit to run all registered filters. " + "Pass an empty array to skip all filters (raw capture)."
+                            ),
+                        },
                     },
                     required: ["uri"],
                     additionalProperties: false,
